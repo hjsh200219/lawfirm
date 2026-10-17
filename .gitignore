@@ -8,3 +8,7 @@ _workspace/
 docs/case-search/lbox/state/
 docs/case-search/lbox/captures/
 .coverage
+# meta-plan 실행 자료(브리프·리서치·리뷰·PRD) — 공개하려면 사용자 지시 때 git add -f
+docs/prd/*
+# 빅케이스 실녹화 — 이 PC 에만(D-04)
+tests/case_search/recorded_local/

@@ -1,5 +1,6 @@
 import os
 import shutil
+import socket
 import sys
 
 import pytest
@@ -14,6 +15,33 @@ sys.dont_write_bytecode = True
 F1 = os.path.join(FIXTURES, "F1", "260901_대여금 청구(홍길동)")
 F2 = os.path.join(FIXTURES, "F2", "260915_대여금(김대출) 피고측")
 F3 = os.path.join(FIXTURES, "F3", "260901_대여금 청구(홍길동) 메모없음")
+
+
+_LOOPBACK = {"localhost", "127.0.0.1", "::1", "", None}
+
+
+def _loopback(host):
+    host = host.decode() if isinstance(host, bytes) else host
+    return host in _LOOPBACK or (isinstance(host, str) and host.startswith("127."))
+
+
+@pytest.fixture(autouse=True)
+def _no_external_network(monkeypatch):
+    """기본 검사는 외부 주소로 나가지 않는다(NFR-05) — 루프백 재생 서버만 허용. 외부 주소 1회면 즉시 실패."""
+    real_getaddrinfo, real_connect = socket.getaddrinfo, socket.socket.connect
+
+    def getaddrinfo(host, *a, **k):
+        if not _loopback(host):
+            raise OSError("외부 주소 차단(테스트): %s" % host)
+        return real_getaddrinfo(host, *a, **k)
+
+    def connect(self, addr):
+        if isinstance(addr, tuple) and not _loopback(addr[0]):
+            raise OSError("외부 주소 차단(테스트): %s" % addr[0])
+        return real_connect(self, addr)
+
+    monkeypatch.setattr(socket, "getaddrinfo", getaddrinfo)
+    monkeypatch.setattr(socket.socket, "connect", connect)
 
 
 @pytest.fixture(autouse=True)
