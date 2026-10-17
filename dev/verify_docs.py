@@ -5,6 +5,7 @@
 import json
 import os
 import re
+import subprocess
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -34,6 +35,14 @@ def _repo_files():
     return names, rels
 
 
+def _git_ignored(rel):
+    # 작업 산출물(meta-plan 실행 폴더 등)은 .gitignore 로 빠진다 — 고아 검사 대상이 아니다
+    try:
+        return subprocess.run(["git", "-C", ROOT, "check-ignore", "-q", rel]).returncode == 0
+    except OSError:
+        return False
+
+
 def check():
     errors, warnings = [], []
     names, rels = _repo_files()
@@ -59,7 +68,7 @@ def check():
             if "/" not in name and name not in names:
                 errors.append("%s: 없는 파일 `%s`" % (doc, name))
     for rel in sorted(r for r in rels if r.startswith("docs/") and r.endswith(".md")):
-        if rel not in linked:
+        if rel not in linked and not _git_ignored(rel):
             errors.append("고아 문서(어느 검사 대상 문서도 링크하지 않음): %s" % rel)
     plugin = json.load(open(os.path.join(ROOT, ".claude-plugin", "plugin.json"), encoding="utf-8"))
     market = json.load(open(os.path.join(ROOT, ".claude-plugin", "marketplace.json"), encoding="utf-8"))
