@@ -1,22 +1,32 @@
 """개발 전용 e2e — 같은 사건·다른 의도 초안을 여러 번 만들고 E1–E8 을 판정한다(PRD §5.3).
 
+법제처·빅케이스 실서비스는 부르지 않는다(replay.py — 루프백 재생 서버·빅케이스 끔). `run` 은 첫 `claude -p` 전에
+모델 없는 인용 대조 사전 시험(과금 0)을 통과해야 시작하고, 실행마다 `--out` 아래 실행 시각 폴더를 새로 만든다.
+결과에는 실행 식별값(HEAD·작업 트리 해시·모델)을 남기고, 식별값이 다른 옛 결과는 재사용하지 않는다.
+
 사용:
-  e2e.py run   --out <폴더> [--runs 3] [--jobs 4]     replay.py 를 병렬로 돌린다
-  e2e.py judge --out <폴더> [--no-jev]               E1–E8 판정표(JSON)
+  e2e.py run   --out <폴더> [--runs 3] [--jobs 4] [--model sonnet] [--max-claude 15]   새 실행 시각 폴더에서 재생
+  e2e.py run   --resume <실행 폴더> ...                                              같은 식별값 결과만 이어 쓴다
+  e2e.py judge --out <실행 폴더> [--no-jev] [--max-jev 12]                          E1–E8 판정표(JSON)
 """
 import argparse
 import concurrent.futures as cf
+import hashlib
 import json
 import os
 import re
+import shutil
 import statistics
 import subprocess
 import sys
+import time
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(REPO, "skills", "intent-brief", "scripts"))
 import check_draft as CD  # noqa: E402
 import _paths as P  # noqa: E402
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import replay as R  # noqa: E402
 
 FX = os.path.join(REPO, "tests", "fixtures")
 ANS = os.path.join(REPO, "tests", "e2e")
@@ -29,22 +39,55 @@ COMBOS = {
 }
 
 
-def run_one(out, combo, i):
+def ident(model):
+    """실행 식별값 — 같은 코드·같은 모델에서 나온 결과만 한 판정표에 모은다."""
+    git = lambda *x: subprocess.run(["git", "-C", REPO] + list(x), capture_output=True).stdout  # noqa: E731
+    tree = git("diff", "HEAD") + git("ls-files", "--others", "--exclude-standard")
+    return {"head": git("rev-parse", "HEAD").decode("utf-8").strip(), "tree": hashlib.sha256(tree).hexdigest()[:16],
+            "model": model}
+
+
+def _report(rd):
+    f = os.path.join(rd, "report.json")
+    return json.load(open(f, encoding="utf-8")) if os.path.exists(f) else None
+
+
+def run_one(out, idt, combo, i):
     fx, ans, brief, _ = COMBOS[combo]
     rd = os.path.join(out, "%s_r%d" % (combo, i))
-    if os.path.exists(os.path.join(rd, "report.json")):
-        return combo, i, json.load(open(os.path.join(rd, "report.json"), encoding="utf-8")).get("ok")
-    p = subprocess.run([sys.executable, "-I", os.path.join(REPO, "dev", "replay.py"), os.path.join(FX, fx), os.path.join(ANS, ans),
-                        "--run-dir", rd, "--brief", brief, "--name", "대여금"], capture_output=True)
+    rep = _report(rd)
+    if rep is not None and rep.get("ident") == idt:
+        return combo, i, rep.get("ok")
+    if os.path.exists(rd):
+        shutil.rmtree(rd)  # 식별값이 다른(또는 끝나지 않은) 옛 결과는 쓰지 않는다
+    cmd = [sys.executable, "-I", os.path.join(REPO, "dev", "replay.py"), os.path.join(FX, fx), os.path.join(ANS, ans),
+           "--run-dir", rd, "--brief", brief, "--name", "대여금", "--ident", json.dumps(idt, sort_keys=True)]
+    if idt.get("model"):
+        cmd += ["--model", idt["model"]]
+    p = subprocess.run(cmd, capture_output=True)
     return combo, i, p.returncode == 0
 
 
 def cmd_run(a):
-    os.makedirs(a.out, exist_ok=True)
+    idt = ident(a.model)
+    out = os.path.abspath(a.resume) if a.resume else os.path.join(os.path.abspath(a.out), time.strftime("%Y%m%d-%H%M%S"))
     jobs = [(c, i) for c in (a.only or list(COMBOS)) for i in range(1, a.runs + 1)]
+    todo = [j for j in jobs if (_report(os.path.join(out, "%s_r%d" % j)) or {}).get("ident") != idt]
+    print("실행 폴더: %s" % out)
+    print("예상 호출: claude -p %d회(모델 %s) · Jev 0회 · Codex 0회 · 상한 claude -p %d회" % (len(todo), a.model, a.max_claude), flush=True)
+    if len(todo) > a.max_claude:
+        print("상한 초과 — 시작하지 않는다", file=sys.stderr)
+        return 2
+    os.makedirs(out, exist_ok=True)
+    pre = R.precheck(os.path.join(out, "_precheck"))
+    print("사전 시험(과금 0): %s" % json.dumps(pre, ensure_ascii=False), flush=True)
+    if not pre["ok"]:
+        print("사전 시험 실패 — claude -p 를 보내지 않는다", file=sys.stderr)
+        return 3
     with cf.ThreadPoolExecutor(max_workers=a.jobs) as ex:
-        for combo, i, ok in ex.map(lambda x: run_one(a.out, *x), jobs):
+        for combo, i, ok in ex.map(lambda x: run_one(out, idt, *x), jobs):
             print("%s r%d %s" % (combo, i, "ok" if ok else "FAIL"), flush=True)
+    return 0
 
 
 def load_run(rd):
@@ -122,6 +165,11 @@ def jev_blind(texts):
 
 
 def cmd_judge(a):
+    reps = [_report(os.path.join(a.out, d)) for d in sorted(os.listdir(a.out)) if re.match(r"(%s)_r\d+$" % "|".join(COMBOS), d)]
+    idents = {json.dumps((r or {}).get("ident"), sort_keys=True) for r in reps}
+    if len(idents) != 1:
+        print("실행 식별값이 %d개 — 한 실행의 결과만 판정한다: %s" % (len(idents), sorted(idents)), file=sys.stderr)
+        return 2
     ph = P.load_phrases()
     table, blind_items = {}, []
     for combo in COMBOS:
@@ -164,6 +212,10 @@ def cmd_judge(a):
         if ma and mb:
             summary[f + "_E6"] = "A/B = %.2f %s" % (ma / mb, ("통과" if ma / mb >= 1.3 else "실패") if f == "F1" else "(기록만)")
     if not a.no_jev and blind_items:
+        print("예상 호출: Jev %d회 · claude -p 0회 · 상한 Jev %d회" % (len(blind_items), a.max_jev), flush=True)
+        if len(blind_items) > a.max_jev:
+            print("상한 초과 — Jev 판별을 하지 않는다", file=sys.stderr)
+            return 2
         res = jev_blind([b[3] for b in blind_items])
         blind = [{"combo": c, "run": d, "truth": t, "pred": res[i][0], "conf": round(res[i][1], 2)} for i, (c, d, t, _) in enumerate(blind_items)]
         for f in ("F1", "F2"):
@@ -171,19 +223,26 @@ def cmd_judge(a):
             n = sum(1 for b in rows if b["pred"] == b["truth"])
             summary[f + "_E7"] = "%d/%d %s" % (n, len(rows), "통과" if n >= 5 else "실패")
         summary["E7_detail"] = blind
-    out = {"summary": summary, "runs": table}
+    elif blind_items:
+        summary["E7"] = "미측정(--no-jev)"
+    out = {"ident": json.loads(idents.pop()), "summary": summary, "runs": table}
     json.dump(out, open(os.path.join(a.out, "judge.json"), "w", encoding="utf-8"), ensure_ascii=False, indent=1)
     print(json.dumps(summary, ensure_ascii=False, indent=1))
+    return 0
 
 
 def main():
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
-    s = sub.add_parser("run"); s.add_argument("--out", required=True); s.add_argument("--runs", type=int, default=3); s.add_argument("--jobs", type=int, default=4); s.add_argument("--only", nargs="*")
+    s = sub.add_parser("run"); g = s.add_mutually_exclusive_group(required=True)
+    g.add_argument("--out"); g.add_argument("--resume")
+    s.add_argument("--runs", type=int, default=3); s.add_argument("--jobs", type=int, default=4); s.add_argument("--only", nargs="*")
+    s.add_argument("--model", default="sonnet"); s.add_argument("--max-claude", type=int, default=15)
     s = sub.add_parser("judge"); s.add_argument("--out", required=True); s.add_argument("--no-jev", action="store_true")
+    s.add_argument("--max-jev", type=int, default=12)
     a = ap.parse_args()
-    {"run": cmd_run, "judge": cmd_judge}[a.cmd](a)
+    return {"run": cmd_run, "judge": cmd_judge}[a.cmd](a)
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

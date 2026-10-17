@@ -7,14 +7,21 @@
 
 런타임 스크립트는 HOME·LOCALAPPDATA 를 실행 폴더로 바꿔 부른다(작업 폴더 기본 경로 로직을 그대로 시험).
 `claude -p` 는 실제 HOME 으로 돈다(키체인 인증) — 경로는 절대경로로 넘긴다.
+법제처·빅케이스 실서비스는 부르지 않는다 — 법제처는 루프백 재생 서버(`drf_replay.py`), 빅케이스는 끔.
+세 변수(`INTENT_BRIEF_LAW_URL`·`INTENT_BRIEF_NO_CASESEARCH`·가짜 `INTENT_BRIEF_LAW_OC`)를 스크립트 환경·`claude -p`
+환경·프롬프트의 인용 대조 명령 앞에 모두 넣고, 끝나면 재생 서버 요청 수를 `cite/*.req.json` 수와 대조한다.
 
 사용:
   replay.py <픽스처 사건 폴더> <answers.json> --run-dir <폴더> --brief 준비서면|답변서 --name <약칭>
-            [--skip-draft] [--claude claude] [--model sonnet]
+            [--skip-draft] [--claude claude] [--model sonnet] [--ident <JSON>]
+  replay.py --precheck <폴더>     모델 없이 인용 대조만 재생 서버에 돌려 본다(과금 0 사전 시험)
 """
 import argparse
+import glob
+import hashlib
 import json
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -23,14 +30,23 @@ import time
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SCRIPTS = os.path.join(REPO, "skills", "intent-brief", "scripts")
 TODAY = "2026-09-15"
+FAKE_OC = "replay-fake-oc"  # 재생 서버는 키를 보지 않는다 — 저장된 실제 키보다 먼저 읽히게 환경변수로 준다
+EXTRA_ENV = {}  # main 이 재생 서버를 띄운 뒤 채운다
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # -I 실행에서도 drf_replay 를 찾게
+import drf_replay  # noqa: E402
 
 
 class ReplayError(Exception):
     pass
 
 
+def replay_env(url):
+    return {"INTENT_BRIEF_LAW_URL": url, "INTENT_BRIEF_NO_CASESEARCH": "1", "INTENT_BRIEF_LAW_OC": FAKE_OC}
+
+
 def script_env(run_dir):
     env = dict(os.environ)
+    env.update(EXTRA_ENV)
     env["HOME"] = os.path.join(run_dir, "home")
     env["LOCALAPPDATA"] = os.path.join(run_dir, "home", "AppData", "Local")
     env["INTENT_BRIEF_TODAY"] = TODAY
@@ -116,7 +132,7 @@ DRAFT_PROMPT = """lawfirm 플러그인의 intent-brief 스킬로 민사 {brief} 
 - 스크립트 폴더: {scripts} (Python 은 `{py}`)
 - 1차 검사: `{py} {scripts}/check_draft.py check "{draft}" "{design}" > "{wd}/check_first.json"`
 - 실패 항목이 있으면 그 항목만 고쳐 초안을 다시 쓰고 `... > "{wd}/check_final.json"` (실패가 없으면 check_first.json 을 check_final.json 으로 복사)
-- 인용 대조: `{py} {scripts}/cite_check.py run "{draft}"` (Bash timeout 600000)
+- 인용 대조: `{lawenv} {py} {scripts}/cite_check.py run "{draft}"` (Bash timeout 600000 · 앞의 환경변수를 빼지 않는다)
 - 사건 폴더나 다른 곳에 파일을 만들지 않는다. references/phrases.json 은 읽지 않는다.
 끝나면 한 줄로 「완료」만 답한다."""
 
@@ -124,9 +140,11 @@ DRAFT_PROMPT = """lawfirm 플러그인의 intent-brief 스킬로 민사 {brief} 
 def draft(run_dir, state, design_path, case_dir, brief, claude, model):
     wd = os.path.dirname(state)
     draft_path = os.path.join(wd, "%s_draft.md" % brief)
+    lawenv = " ".join("%s=%s" % (k, shlex.quote(v)) for k, v in sorted(EXTRA_ENV.items()))
     prompt = DRAFT_PROMPT.format(brief=brief, design=design_path, case=case_dir, draft=draft_path, scripts=SCRIPTS,
-                                 py=sys.executable, wd=wd)
+                                 py=sys.executable, wd=wd, lawenv=lawenv)
     env = dict(os.environ)
+    env.update(EXTRA_ENV)
     env["INTENT_BRIEF_TODAY"] = TODAY
     tok = os.environ.get("INTENT_BRIEF_TOKEN_FILE")  # 무인 claude -p 에 쓸 OAuth 토큰 파일(선택)
     if "CLAUDE_CODE_OAUTH_TOKEN" not in env and tok and os.path.exists(tok):
@@ -152,18 +170,92 @@ def draft(run_dir, state, design_path, case_dir, brief, claude, model):
     return draft_path, round(time.time() - t0, 1)
 
 
+def cite_audit(wd, server_count):
+    """재생 서버 요청 수 = 새로 쓴 `cite/*.req.json` 수 · format_changed 0 · 빅케이스 캐시 0 — 어긋나면 방향을 적는다."""
+    req = len(glob.glob(os.path.join(wd, "cite", "*.req.json")))
+    ext = len(glob.glob(os.path.join(wd, "cite", "external", "*")))
+    res = os.path.join(wd, "cite_results.json")
+    summary = json.load(open(res, encoding="utf-8")).get("summary", {}) if os.path.exists(res) else None
+    r = {"server": server_count, "req_json": req, "external": ext, "summary": summary,
+         "format_changed": (summary or {}).get("format_changed", 0)}
+    if summary is None:
+        r["error"] = "cite_results.json 없음 — 인용 대조가 돌지 않았다"
+    elif server_count < req:
+        r["error"] = "재생 서버 밖 요청(서버 %d < req.json %d)" % (server_count, req)
+    elif server_count > req:
+        r["error"] = "형식 변경으로 캐시가 지워짐 또는 대조 밖 법제처 요청(서버 %d > req.json %d)" % (server_count, req)
+    elif r["format_changed"]:
+        r["error"] = "format_changed %d건" % r["format_changed"]
+    elif ext:
+        r["error"] = "빅케이스 캐시(cite/external) %d개 — 빅케이스가 꺼지지 않았다" % ext
+    r["ok"] = "error" not in r
+    return r
+
+
+PRECHECK_DRAFT = """## [sec:sec.body] 본문
+
+원고의 주장은 민사소송법 제288조에 따라 다툼이 없는 사실이다. 민사소송법 제1조의 신의칙도 같다.
+대법원 2017. 2. 21. 선고 2016다225353 판결과 대법원 2020. 3. 12. 선고 2019다12345 판결을 본다.
+"""
+
+
+def _cite_subprocess(draft_path, env):
+    p = subprocess.run([sys.executable, "-I", os.path.join(SCRIPTS, "cite_check.py"), "run", draft_path],
+                       env=env, capture_output=True, timeout=300)
+    return None if p.returncode == 0 else "cite_check.py rc=%s: %s" % (p.returncode, p.stderr.decode("utf-8", "replace")[-300:])
+
+
+def precheck(out, run_cite=_cite_subprocess):
+    """과금 0 사전 시험 — 녹화 밖 조문 1·녹화 밖 사건번호 1을 인용한 가짜 초안을 모델 없이 재생 서버에 대조한다."""
+    os.makedirs(out, exist_ok=True)
+    draft_path = os.path.join(out, "precheck_draft.md")
+    open(draft_path, "w", encoding="utf-8").write(PRECHECK_DRAFT)
+    srv = drf_replay.Server().start()
+    try:
+        env = dict(os.environ)
+        env.update(replay_env(srv.url))
+        err = run_cite(draft_path, env)
+        srv.dump(os.path.join(out, "drf_requests.json"))
+        r = cite_audit(out, srv.count)
+    finally:
+        srv.stop()
+    if err and r["ok"]:
+        r.update(ok=False, error=err)
+    return r
+
+
+def _sha(*paths):
+    h = hashlib.sha256()
+    for path in paths:
+        for f in sorted(glob.glob(os.path.join(path, "**"), recursive=True)) if os.path.isdir(path) else [path]:
+            if os.path.isfile(f):
+                h.update(os.path.relpath(f, path if os.path.isdir(path) else os.path.dirname(f)).encode("utf-8"))
+                h.update(open(f, "rb").read())
+    return h.hexdigest()[:16]
+
+
 def main(argv=None):
+    if argv is None and sys.argv[1:2] == ["--precheck"]:
+        r = precheck(os.path.abspath(sys.argv[2]))
+        print(json.dumps(r, ensure_ascii=False))
+        return 0 if r["ok"] else 1
     ap = argparse.ArgumentParser()
     ap.add_argument("fixture"); ap.add_argument("answers")
     ap.add_argument("--run-dir", required=True); ap.add_argument("--brief", required=True); ap.add_argument("--name", required=True)
     ap.add_argument("--skip-draft", action="store_true"); ap.add_argument("--claude", default="claude"); ap.add_argument("--model")
+    ap.add_argument("--ident", help="실행 식별값 JSON(e2e.py 가 준다 — HEAD·작업 트리 해시·모델)")
     a = ap.parse_args(argv)
     run_dir = os.path.abspath(a.run_dir)
     os.makedirs(os.path.join(run_dir, "home"), exist_ok=True)
     case_dir = os.path.join(run_dir, "case", os.path.basename(a.fixture.rstrip("/")))
     shutil.copytree(a.fixture, case_dir)
     answers = json.load(open(a.answers, encoding="utf-8"))
-    report = {"fixture": a.fixture, "answers": a.answers, "case_dir": case_dir}
+    report = {"fixture": a.fixture, "answers": a.answers, "case_dir": case_dir,
+              "ident": json.loads(a.ident) if a.ident else None, "input_sha": _sha(a.fixture, a.answers),
+              "started": time.strftime("%Y-%m-%dT%H:%M:%S%z")}
+    srv = drf_replay.Server().start()
+    EXTRA_ENV.clear()
+    EXTRA_ENV.update(replay_env(srv.url))
     try:
         state, design = interview(run_dir, case_dir, answers, a.brief)
         report.update(state=state, design=design)
@@ -186,10 +278,16 @@ def main(argv=None):
             todos = [t["text"] for t in d["todo"]]
             report["memo2"] = memo_auto(run_dir, state, ["%s 초안 v%d 작성 — %s · [확인 필요] %d건" % (
                 a.brief, r["version"], os.path.basename(r["paths"]["draft"]), n_tags)], todos)
+        srv.dump(os.path.join(run_dir, "drf_requests.json"))
+        report["cite_audit"] = cite_audit(os.path.dirname(state), srv.count)
+        if not report["cite_audit"]["ok"]:
+            raise ReplayError("인용 대조 재생 점검 실패: %s" % report["cite_audit"]["error"])
         report["ok"] = True
     except (ReplayError, subprocess.TimeoutExpired) as e:
         report["ok"] = False
         report["error"] = str(e)
+    finally:
+        srv.stop()
     json.dump(report, open(os.path.join(run_dir, "report.json"), "w", encoding="utf-8"), ensure_ascii=False, indent=1)
     print(json.dumps({"ok": report["ok"], "run_dir": run_dir, "error": report.get("error")}, ensure_ascii=False))
     return 0 if report["ok"] else 1
