@@ -155,3 +155,19 @@ def test_run_dispatches_all_jobs(tmp_path, capsys):
                    precheck=lambda o: {"ok": True}, usage=lambda: 0.0)
     assert rc == 0 and len(calls) == 12
     assert "Codex 12회" in capsys.readouterr().out
+
+
+def test_run_refuses_out_inside_repo(capsys):
+    calls = []
+    rc = E.cmd_run(_args(None, out=os.path.join(ROOT, "docs", "prd", "x")), runner=lambda *x: calls.append(x),
+                   precheck=lambda o: {"ok": True}, usage=lambda: 0.0)
+    assert rc == 5 and calls == []
+
+
+def test_precheck_uses_fresh_folder_on_resume(tmp_path):
+    seen = []
+    pre = lambda o: seen.append(o) or {"ok": True}  # noqa: E731
+    for _ in range(2):
+        E.cmd_run(_args(tmp_path, resume=str(tmp_path / "run"), runs=1, only=["CS1"], arms=["with"]),
+                  runner=lambda out, job: True, precheck=pre, usage=lambda: 0.0)
+    assert len(set(seen)) == 2 and all(not os.path.exists(os.path.join(s, "cite")) for s in seen)

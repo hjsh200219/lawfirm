@@ -12,7 +12,7 @@ case-search 는 두 조건에 같은 질문을 준다. 웹 도구(WebFetch·WebS
 판정(judge)은 서면 형식(앵커)에 기대지 않는 같은 기준표로 두 조건을 본다. Jev 는 쓰지 않는다.
 
 사용:
-  skill_eval.py run   --env claude|codex --out <폴더> [--runs 3] [--jobs 4] [--only IB1 ...] [--arms with without]
+  skill_eval.py run   --env claude|codex --out <repo 밖 폴더> [--runs 3] [--jobs 4] [--only IB1 ...] [--arms with without]
                       [--model sonnet] [--max-calls 36] [--weekly-cap 0.95]      실행 전 예상 호출 수를 찍고 상한을 넘으면 시작 안 함
   skill_eval.py run   --env ... --resume <실행 폴더>                              같은 식별값 결과는 건너뛴다
   skill_eval.py judge --out <실행 폴더> [<실행 폴더> ...]                          기준표 판정·통과율 표(judge.json)
@@ -27,6 +27,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -309,6 +310,9 @@ def cmd_run(a, runner=None, precheck=None, usage=None):
     todo = [j for j in jobs if (_report(os.path.join(out, _name(j))) or {}).get("ident") != idt]
     n = len(todo)
     print("실행 폴더: %s" % out)
+    if os.path.commonpath([out, REPO]) == REPO:  # 공개 repo 밖에 둔다 — Codex 플러그인 설치가 repo 를 복사하며 자기 자신을 품는다
+        print("실행 폴더가 repo 안입니다 — repo 밖 폴더를 고르십시오", file=sys.stderr)
+        return 5
     if a.env == "claude":
         print("예상 호출: claude -p %d회(모델 %s · 계정 edb 토큰) · Codex 0회 · Jev 0회 · 상한 %d회" % (n, a.model, a.max_calls), flush=True)
     else:
@@ -322,7 +326,7 @@ def cmd_run(a, runner=None, precheck=None, usage=None):
             print("edb 주간 사용률 %.0f%% ≥ 상한 %.0f%% — 시작하지 않는다" % (u * 100, a.weekly_cap * 100), file=sys.stderr)
             return 4
     os.makedirs(out, exist_ok=True)
-    pre = precheck(os.path.join(out, "_precheck"))
+    pre = precheck(tempfile.mkdtemp(prefix="_precheck-", dir=out))  # 이어 실행해도 캐시 없는 새 폴더
     print("사전 시험(과금 0): %s" % json.dumps(pre, ensure_ascii=False), flush=True)
     if not pre.get("ok"):
         print("사전 시험 실패 — 모델 호출을 보내지 않는다", file=sys.stderr)
