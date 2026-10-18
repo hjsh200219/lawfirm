@@ -1,0 +1,14 @@
+{
+ "result_count": 1,
+ "results": [
+  {
+   "case_id": 1001,
+   "case_expression": "대법원 2014. 7. 10. 선고 2014다26187 판결",
+   "case_number": "2014다26187",
+   "court": "대법원",
+   "case_type": "민사",
+   "outcome": "상고기각",
+   "level": "대법원"
+  }
+ ]
+}

@@ -1,0 +1,39 @@
+{
+ "case_expression": "대법원 2014. 7. 10. 선고 2014다26187 판결",
+ "case_number": "2014다26187",
+ "court": "대법원",
+ "outcome": "상고기각",
+ "judgment_date": "2014-07-10",
+ "pub_info": "합성",
+ "holdings": "합성 판시사항",
+ "summary": "합성 판결요지",
+ "ref_laws": "민법 제598조",
+ "ref_cases": "",
+ "fulltext": {
+  "body_court": "대법원",
+  "body_infos": [
+   {
+    "item": "원고",
+    "content": "합성"
+   }
+  ],
+  "disposition": "상고를 기각한다.",
+  "claim": "",
+  "reasoning": "합성 이유",
+  "judges": "합성",
+  "comments": ""
+ },
+ "attached_text": "",
+ "attached": [
+  {
+   "title": "합성",
+   "files": []
+  }
+ ],
+ "history_cases": [
+  {
+   "case_expression": "합성 원심"
+  }
+ ],
+ "restricted": false
+}

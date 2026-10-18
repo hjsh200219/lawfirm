@@ -284,12 +284,17 @@ def test_bigcase_search_normal_and_empty_pass():
     assert FakeCS(search_out={"total": 0, "results": []}).find_exact("2014다26187") is None
 
 
-def test_bigcase_case_raw_rule_off_until_keys_recorded():
+def test_bigcase_case_raw_required_keys(tmp_path):
+    """법원 있는 case --raw — 2026-10-18 로컬 녹화로 정한 필수 키(case_number·court)가 없으면 형식 변경."""
     keys = json.load(open(os.path.join(ROOT, "skills", "intent-brief", "references", "response-keys.json"), encoding="utf-8"))
-    req = keys["bigcase"]["case"]["required"]
-    hit = FakeCS(case_out=CS._hit({"case_expression": "x"})).find_exact("2014다26187", "대법원")
-    if req is None:
-        assert hit is None  # 규칙 끔 — 지금처럼 번호 불일치면 없음
+    assert keys["bigcase"]["case"]["required"] == ["case_number", "court"]
+    with pytest.raises(CS.FormatChanged):
+        FakeCS(case_out=CS._hit({"case_expression": "x"})).find_exact("2014다26187", "대법원")
+    ok = CS._hit({"case_number": "2014다26187", "court": "대법원", "judgment_date": "2014-07-10"})
+    assert FakeCS(case_out=ok).find_exact("2014다26187", "대법원")["date"] == "20140710"
+    assert FakeCS(case_out=None).find_exact("2014다26187", "대법원") is None  # HTTP 404 는 「없음」 그대로
+    r = C.Checker(str(tmp_path / "cite"), client=FakeLaw(MISSING), external=FakeCS(case_out=CS._hit({"x": 1}))).check(C2014)
+    assert r["status"] == "unverified" and "빅케이스 응답 형식 변경" in r["detail"]
 
 
 def test_bigcase_not_found_cache_rechecked_once_on_new_version(tmp_path):

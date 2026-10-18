@@ -1,5 +1,5 @@
 {
-  "_note": "런타임이 읽는 응답 키 목록 — 받는 PC 의 형식 검사(lawapi·casesearch)와 개발 PC 의 계약 점검(dev/contract.py)이 같은 파일을 읽는다. required 는 항목 필수 키(없으면 형식 변경), keys 는 계약 점검 비교 키. 빅케이스 case(match_view) 필수 키는 로컬 녹화로 최상위 키를 잰 뒤 정한다 — 그 전에는 null(검사 끔).",
+  "_note": "런타임이 읽는 응답 키 목록 — 받는 PC 의 형식 검사(lawapi·casesearch)와 개발 PC 의 계약 점검(dev/contract.py)이 같은 파일을 읽는다. required 는 항목 필수 키(없으면 형식 변경), keys 는 계약 점검 비교 키. 빅케이스 case(match_view) 필수 키는 2026-10-18 로컬 녹화 1회의 최상위 키(32개 — case_number·court 포함)로 정했다.",
   "law": {
     "law_search": {"path": "lawSearch.do", "target": "law", "container": "LawSearch", "list": "law", "count": "totalCnt",
                    "required": ["법령명한글", "법령ID"],
@@ -19,8 +19,9 @@
     "brief": {"list": "results", "keys": ["result_count", "results", "case_id", "case_expression", "case_number", "court", "case_type", "outcome", "level"]},
     "decisions": {"list": "datas", "keys": ["total_count", "datas", "id", "title", "date", "organizationName", "highlight"]},
     "decision": {"keys": ["id", "title", "date", "dateName", "organizationName", "filepath"]},
-    "case": {"required": null,
+    "case": {"required": ["case_number", "court"],
              "keys": ["case_expression", "case_number", "court", "outcome", "judgment_date", "pub_info", "holdings", "summary",
-                      "ref_laws", "ref_cases", "fulltext", "attached_text", "attached", "history_cases", "restricted"]}
+                      "ref_laws", "ref_cases", "fulltext", "body_court", "body_infos", "item", "content", "disposition", "claim",
+                      "reasoning", "judges", "comments", "attached_text", "attached", "title", "files", "history_cases", "restricted"]}
   }
 }

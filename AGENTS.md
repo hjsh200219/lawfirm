@@ -17,7 +17,7 @@
 | 의도·채점·문구 데이터 | `skills/intent-brief/references/` — `intent-params.json`(섹션 어휘·충돌표), `response-keys.json`(법제처·빅케이스 응답 키 — 받는 PC 형식 검사·계약 점검 공용), `intents.md`, `scoring.md`, `phrases.json`, `brief-types/` |
 | 런타임 스크립트 | `skills/intent-brief/scripts/` — 역할·의존 방향은 [ARCHITECTURE.md](ARCHITECTURE.md) |
 | 테스트 | `tests/` — 픽스처 F1(하네스 데모 사본)·F2·F3(합성), `recorded/`(녹화 응답), `e2e/`(답 파일), `case_search/`(빅케이스 오프라인 — scrapling·keyring 없으면 건너뜀) |
-| 개발 전용 도구 | `dev/` — `replay.py`(무인 재생)·`e2e.py`(E1–E8 판정)·`drf_replay.py`(e2e 용 법제처 루프백 재생 서버)·`secret_scan.py`(녹화·픽스처 비밀·개인정보 형식 검사)·`smoke.py`(받는 PC 실기 점검)·`verify_docs.py`·`holidays_kasi.py`(공휴일 표 생성, KASI 키는 환경변수) |
+| 개발 전용 도구 | `dev/` — `replay.py`(무인 재생)·`e2e.py`(E1–E8 판정)·`drf_replay.py`(e2e 용 법제처 루프백 재생 서버)·`secret_scan.py`(녹화·픽스처 비밀·개인정보 형식 검사)·`contract.py`(법제처·빅케이스 계약 점검·빅케이스 로컬 녹화 — 판 올림 절차 docs/QUALITY.md)·`smoke.py`(받는 PC 실기 점검)·`verify_docs.py`·`holidays_kasi.py`(공휴일 표 생성, KASI 키는 환경변수) |
 | 품질 기준·부채 | [docs/QUALITY.md](docs/QUALITY.md) · [docs/exec-plans/tech-debt-tracker.md](docs/exec-plans/tech-debt-tracker.md) |
 | 구현 전 함정 목록 | [docs/harness/harness-setup.md](docs/harness/harness-setup.md) |
 | 하네스 채점 | [원칙](docs/harness/principles.md) · [성숙도](docs/harness/maturity-framework.md) · [개선 카탈로그](docs/harness/fix-catalog.md) · [GC 이력](docs/harness/gc-history.md) |

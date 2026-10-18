@@ -1,0 +1,12 @@
+{
+ "LawSearch": {
+  "resultMsg": "success",
+  "키워드": "계약점검용없는법령명",
+  "page": "1",
+  "resultCode": "00",
+  "target": "law",
+  "totalCnt": "0",
+  "section": "lawNm",
+  "numOfRows": "0"
+ }
+}
