@@ -45,6 +45,12 @@ def _no_external_network(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _no_first_use_notice(monkeypatch):
+    """첫 사용 고지는 끈다 — 고지 시험(test_notice.py)만 지운다."""
+    monkeypatch.setenv("INTENT_BRIEF_NO_NOTICE", "1")
+
+
+@pytest.fixture(autouse=True)
 def _no_real_casesearch(monkeypatch):
     """테스트가 이 PC 에 설치된 실제 case-search(빅케이스 로그인)를 부르지 않게 — 필요한 테스트만 지운다."""
     monkeypatch.setenv("INTENT_BRIEF_NO_CASESEARCH", "1")

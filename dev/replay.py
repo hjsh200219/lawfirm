@@ -41,7 +41,8 @@ class ReplayError(Exception):
 
 
 def replay_env(url):
-    return {"INTENT_BRIEF_LAW_URL": url, "INTENT_BRIEF_NO_CASESEARCH": "1", "INTENT_BRIEF_LAW_OC": FAKE_OC}
+    return {"INTENT_BRIEF_LAW_URL": url, "INTENT_BRIEF_NO_CASESEARCH": "1", "INTENT_BRIEF_LAW_OC": FAKE_OC,
+            "INTENT_BRIEF_NO_NOTICE": "1"}  # 첫 사용 고지는 재생 판정과 무관
 
 
 def script_env(run_dir):

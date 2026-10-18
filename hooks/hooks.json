@@ -1,5 +1,5 @@
 {
-  "description": "세션 시작 때 사건메모 「주요 일정」에서 14일 안의 기한·기일을 알린다(없으면 출력 없음) — command 는 Claude Code(Windows 는 Git Bash)·macOS Codex, commandWindows 는 Windows Codex(PowerShell 5.1, ${CLAUDE_PLUGIN_ROOT} 를 Codex 가 미리 바꿔 넣는다)",
+  "description": "세션 시작 때 환경마다 한 번 첫 사용 고지(systemMessage)를 내고, 사건메모 「주요 일정」에서 14일 안의 기한·기일을 알린다(둘 다 없으면 출력 없음) — command 는 Claude Code(Windows 는 Git Bash)·macOS Codex, commandWindows 는 Windows Codex(PowerShell 5.1, ${CLAUDE_PLUGIN_ROOT} 를 Codex 가 미리 바꿔 넣는다)",
   "hooks": {
     "SessionStart": [
       {

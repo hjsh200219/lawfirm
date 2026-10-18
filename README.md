@@ -111,7 +111,7 @@ codex plugin add lawfirm@lawfirm
 - `/lawfirm:law-key-setup` — 법제처 OC 키(인자 `us` 면 CourtListener 토큰도)
 - `/lawfirm:case-search-setup` — 빅케이스 이메일·비밀번호(OS 키체인)
 
-세션 시작 훅: 사건메모 「주요 일정」에서 14일 안의 기한·기일을 알립니다(`hooks/hooks.json`). 사건 폴더를 모아 둔 폴더를 한 번 등록하면 됩니다 — 「다가오는 기한 점검하게 <폴더> 등록해 줘」. 다가오는 것이 없으면 아무것도 출력하지 않습니다.
+세션 시작 훅: Claude Code·Codex 마다 처음 한 번 위 고지(①②③)의 요약을 보여 주고(작업 폴더 notice.json 에 기록, 문구가 바뀌면 다시), 사건메모 「주요 일정」에서 14일 안의 기한·기일을 알립니다(`hooks/hooks.json`). 사건 폴더를 모아 둔 폴더를 한 번 등록하면 됩니다 — 「다가오는 기한 점검하게 <폴더> 등록해 줘」. 다가오는 것이 없으면 아무것도 출력하지 않습니다.
 
 법률 문서 스킬 6종은 thechain.lawyer(이영남 변호사 사무소)의 스킬입니다(MIT). 법령·판례 조회는 이 플러그인의 법제처 직접 호출을 쓰고(`references/law-lookup.md`), 산출물 끝에는 유의사항 1문장만 붙습니다 — 상담 안내는 사용 변호사가 자기 사무소 정보를 넣었을 때만 붙습니다(`references/cta-config.md`, 작업 폴더의 office.json). 원저작 출처는 이 문단에만 적습니다. 계약 검토·NDA 분류·위험 점수표는 Anthropic knowledge-work-plugins 의 legal 스킬(Apache-2.0) 구조를 한국법으로 다시 썼습니다 — [고지](third_party/anthropic-legal/NOTICE.md).
 
