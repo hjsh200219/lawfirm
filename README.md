@@ -19,6 +19,10 @@
 - **사이트 API 만들기(`site-api`)**: 판례·법령·공고 사이트 URL 하나로 그 사이트의 API 를 찾아 빅케이스 클라이언트와 같은 틀(키체인 자격증명·토큰 재사용·호스트 고정)의 Scrapling 클라이언트를 만듭니다.
 
 > AI는 실수할 수 있습니다. 인용 대조의 「확인됨」은 그 조문·판례가 법제처 원문에 존재한다는 뜻이며 적합성은 보증하지 않습니다. 최종 검토와 제출 판단은 사용 변호사의 책임입니다.
+>
+> - 변호사 업무 보조용입니다. 초안·검토 결과는 참고 자료이고 결론은 변호사가 정합니다.
+> - 사건 자료(파일·대화)는 쓰는 AI 도구(Claude Code·Codex)의 모델 제공자에게 전송·처리됩니다(국외일 수 있음). 이 플러그인 자체는 사용 통계 등을 PC 밖으로 보내지 않습니다.
+> - 작업 폴더(macOS `~/.intent-brief/`, Windows `%LOCALAPPDATA%\intent-brief\`)에 인터뷰 상태·초안·인용 응답·사건메모 사본이 남습니다. 끝난 사건은 `state.py purge` 로 지우십시오(아래 「데이터 위치」).
 
 ## 설치
 
@@ -65,7 +69,7 @@ codex plugin add lawfirm@lawfirm
 | 빅케이스 판례 검색(선택) | [uv](https://docs.astral.sh/uv/) + 본인 빅케이스 계정 → `/lawfirm:case-search-setup`(Codex 는 「빅케이스 계정 등록해 줘」) — 아래 「uv·Scrapling」 |
 | 사이트 API 만들기(선택) | uv(Scrapling 은 자동) · 네트워크 발굴(`--cdp`)을 쓰면 브라우저 엔진 — 아래 「uv·Scrapling」 |
 | 미국 판결문 본문(선택) | CourtListener 무료 계정 API 토큰 → `/lawfirm:law-key-setup us`(검색은 토큰 없이 됩니다) |
-| 형사합의서 | Node 와 `docx` 패키지(`npm install -g docx`) |
+| 내용증명·고소장·사실확인서·형사합의서 .docx | Node 와 `docx` 패키지 — `npm install --prefix ~ docx`(전역 설치 `-g` 만으로는 `require('docx')` 가 찾지 못합니다). 스킬이 만들기 전에 확인하고 없으면 이 안내를 보이고 멈춥니다 |
 
 ### uv·Scrapling
 
@@ -109,7 +113,7 @@ codex plugin add lawfirm@lawfirm
 
 세션 시작 훅: 사건메모 「주요 일정」에서 14일 안의 기한·기일을 알립니다(`hooks/hooks.json`). 사건 폴더를 모아 둔 폴더를 한 번 등록하면 됩니다 — 「다가오는 기한 점검하게 <폴더> 등록해 줘」. 다가오는 것이 없으면 아무것도 출력하지 않습니다.
 
-법률 문서 스킬 6종은 thechain.lawyer(이영남 변호사 사무소)의 스킬입니다(MIT). 법령·판례 조회는 이 플러그인의 법제처 직접 호출을 쓰고(`references/law-lookup.md`), 산출물 끝의 변호사 안내(CTA)는 `references/cta-config.md` 를 따릅니다. 계약 검토·NDA 분류·위험 점수표는 Anthropic knowledge-work-plugins 의 legal 스킬(Apache-2.0) 구조를 한국법으로 다시 썼습니다 — [고지](third_party/anthropic-legal/NOTICE.md).
+법률 문서 스킬 6종은 thechain.lawyer(이영남 변호사 사무소)의 스킬입니다(MIT). 법령·판례 조회는 이 플러그인의 법제처 직접 호출을 쓰고(`references/law-lookup.md`), 산출물 끝에는 유의사항 1문장만 붙습니다 — 상담 안내는 사용 변호사가 자기 사무소 정보를 넣었을 때만 붙습니다(`references/cta-config.md`, 작업 폴더의 office.json). 원저작 출처는 이 문단에만 적습니다. 계약 검토·NDA 분류·위험 점수표는 Anthropic knowledge-work-plugins 의 legal 스킬(Apache-2.0) 구조를 한국법으로 다시 썼습니다 — [고지](third_party/anthropic-legal/NOTICE.md).
 
 ## 지원 범위 (0.7.0)
 
@@ -124,13 +128,13 @@ codex plugin add lawfirm@lawfirm
 - 인터뷰 상태·중간 초안·인용 응답·사건메모 사본: 작업 폴더 — macOS `~/.intent-brief/`, Windows `%LOCALAPPDATA%\intent-brief\`. 의뢰인 정보가 들어 있으니 끝난 사건은 지우십시오:
   `python <플러그인>/skills/intent-brief/scripts/state.py purge <사건폴더>` (전부: `--all`). 플러그인을 지워도 이 폴더는 남습니다.
 - 사건 폴더에 `사건메모.md`(업무관리 하네스 형식)가 있으면 진행 경과·할 일을 diff 확인 후 기록합니다. 없으면 기록하지 않습니다.
-- 빅케이스: 이메일 `~/.case-search/bigcase/config.json`(0600) · 비밀번호 OS 키체인(서비스 `case-search-bigcase`) · 토큰 `~/.case-search/bigcase/session.json`(0600). 환경변수 `BIGCASE_ID`/`BIGCASE_PW` 가 있으면 키체인보다 우선하고, `CASE_SEARCH_HOME` 으로 보관 폴더를 바꿉니다. 지우기: `uv run <플러그인>/skills/case-search/scripts/bigcase.py forget`.
+- 빅케이스: 이메일 `~/.case-search/bigcase/config.json` · 비밀번호 OS 키체인(서비스 `case-search-bigcase`) · 토큰 `~/.case-search/bigcase/session.json`(두 파일 모두 macOS·Linux 는 이 PC 사용자만 읽게 권한 0600). 환경변수 `BIGCASE_ID`/`BIGCASE_PW` 가 있으면 키체인보다 우선하고, `CASE_SEARCH_HOME` 으로 보관 폴더를 바꿉니다. 지우기: `uv run <플러그인>/skills/case-search/scripts/bigcase.py forget`.
 - 계약 검토 플레이북: 작업 폴더의 playbooks 폴더(playbook-contract.md·playbook-nda.md — 만들기 전에는 번들 기본값을 씀. 의뢰인별 기준은 `playbooks/<의뢰인>/`, `--profile <의뢰인>`). 기한 점검 등록 폴더 목록: 작업 폴더의 dday.json. `site-api` 가 만든 클라이언트·세션: 작업 폴더 `site-api/`(자격증명은 키체인 `site-api-<이름>`).
-- 해외 판례 토큰: `~/.case-search/foreign.json`(0600). 환경변수 `COURTLISTENER_API_TOKEN` 이 있으면 먼저 씁니다. 지우기: `python <플러그인>/skills/case-search/scripts/foreigncase.py key clear us`.
+- 해외 판례 토큰: `~/.case-search/foreign.json`(macOS·Linux 는 이 PC 사용자만 읽게 권한 0600). 환경변수 `COURTLISTENER_API_TOKEN` 이 있으면 먼저 씁니다. 지우기: `python <플러그인>/skills/case-search/scripts/foreigncase.py key clear us`.
 
 ## 원격 서버 의존
 
-조문·판례 대조는 **법제처 Open API 를 직접** 부릅니다(중계 서버·MCP 없음). 각자 자기 키(OC)가 필요합니다 — https://open.law.go.kr 에서 회원가입 → OPEN API 사용 신청(법령·판례)을 하고 받은 OC 값을 `/lawfirm:law-key-setup` 이 띄우는 입력 창에 넣으면 판례 1건으로 확인한 뒤 작업 폴더의 config.json(본인만 읽기)에 저장합니다(채팅에 적지 않습니다). 신청 때 이 PC 의 IP 주소 등록을 요구할 수 있습니다. 환경변수 `INTENT_BRIEF_LAW_OC`·`LAW_API_OC` 가 있으면 그 값을 먼저 씁니다. 법제처가 응답하지 않으면 초안 작성은 계속되고 인용에 `[법제처 장애 — 미확인]` 이 붙습니다.
+조문·판례 대조는 **법제처 Open API 를 직접** 부릅니다(중계 서버·MCP 없음). 각자 자기 키(OC)가 필요합니다 — https://open.law.go.kr 에서 회원가입 → OPEN API 사용 신청(법령·판례)을 하고 받은 OC 값을 `/lawfirm:law-key-setup` 이 띄우는 입력 창에 넣으면 키 오류 검사(판례 1건 조회)를 통과한 뒤 저장합니다(채팅에 적지 않습니다). 키는 작업 폴더의 config.json 에 저장합니다(macOS `~/.intent-brief/config.json` 은 이 PC 사용자만 읽게 권한 0600, Windows `%LOCALAPPDATA%\intent-brief\config.json` 은 파일 권한을 따로 바꾸지 않음). 키 값은 출력·캐시·오류 문구에 쓰지 않습니다. 신청 때 이 PC 의 IP 주소 등록을 요구할 수 있습니다. 환경변수 `INTENT_BRIEF_LAW_OC`·`LAW_API_OC` 가 있으면 그 값을 먼저 씁니다. 법제처가 응답하지 않으면 초안 작성은 계속되고 인용에 `[법제처 장애 — 미확인]` 이 붙습니다.
 
 **빅케이스 자동 연결**: `/lawfirm:case-search-setup` 으로 빅케이스에 로그인해 두면 민사 서면 인용 대조에도 따로 설정 없이 연결됩니다. 법제처에 원문이 없는 판례(예: 2014다26187)는 빅케이스에서 같은 사건번호를 한 번 찾아 「빅케이스 확인」으로 표시하고(「확인됨」과 구분), 쟁점 정리 때 판례 후보 검색에도 씁니다.
 

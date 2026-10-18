@@ -75,6 +75,8 @@ description: >
 
 수집한 정보를 바탕으로 `scripts/generate.js`를 실행하여 .docx 파일을 생성한다.
 
+실행 전에 `generate.js` 가 있는 `scripts/` 폴더에서 `node -e "require('docx')"` 를 실행한다. 실패하면 「문서 생성에 Node.js 와 docx 모듈이 필요합니다 — 터미널에서 `npm install --prefix ~ docx` 를 실행한 뒤 다시 요청해 주십시오(Node.js 가 없으면 nodejs.org 에서 먼저 설치)」 한 줄을 보이고 멈춘다(전역 설치 `-g` 만으로는 `require` 해석 경로에 없다).
+
 ### 실행 방법
 
 **Claude Code 플러그인**: 스크립트는 이 스킬 폴더의 `scripts/generate.js` 다(스킬을 불러올 때 표시되는 「Base directory for this skill」 경로 아래). `--output` 은 아래 「저장 위치 확인 절차」로 정한 경로를 준다.
@@ -225,23 +227,14 @@ node "<스킬 폴더>/scripts/generate.js" --data "<JSON 파일 경로>" --outpu
 
 ---
 
-## CTA (광고 문구) — 모든 결과물에 필수 포함
+## 유의사항·상담 안내 — `../../references/cta-config.md`
 
-모든 형사 합의서 결과물에는 CTA를 반드시 포함해야 한다. CTA는 두 곳에 들어간다:
-- 채팅 응답 (안내사항 다음)
-- .docx 문서 맨 마지막 별도 페이지 (서명란 이후 PageBreak 삽입)
+모든 형사 합의서 결과물 끝에 유의사항을 붙인다(채팅 응답의 안내사항 다음, .docx 문서 맨 마지막 별도 페이지 — `generate.js` 가 `cta-config.md` 의 문장과 사무소 정보 파일을 읽어 넣는다). 문장·템플릿·서식은 **`../../references/cta-config.md`** 를 읽어 그대로 쓴다.
+- 유의사항 문장은 그 파일의 1문장만 쓴다. 생략하지 않는다.
+- 상담 안내는 사용 변호사의 사무소 정보 파일(macOS `~/.intent-brief/office.json`, Windows `%LOCALAPPDATA%\intent-brief\office.json`)이 있을 때만 붙인다. 없으면 붙이지 않는다 — 다른 사무소 정보로 채우거나 지어내지 않는다.
+- 문서유형: "형사 합의서" · 제출 안내: "법원 제출 시 본 페이지는 제외하십시오."
 
-**`../../references/cta-config.md` 파일을 읽어 변호사 정보와 CTA 템플릿을 참조한다.**
-- 문서유형: "형사 합의서"
-- 제출 안내: "법원 제출 시 본 페이지는 제외하십시오."
-
-**형사 합의서 전용 서식 지침:**
-- 서명란 뒤에 `new Paragraph({ children: [new PageBreak()] })` 를 삽입하여 반드시 새 페이지에서 CTA가 시작되도록 한다
-- "[유의사항]", "[상담 안내]" 제목은 굵게, 16pt, 파란색(#0055CC)
-- CTA 영역 글꼴: 바탕체(Batang), 12pt, 파란색(#0055CC)
-- 변호사 이름은 굵게, 14pt, 파란색(#0055CC)
-
-CTA는 생략하지 않는다. 합의서를 생성할 때마다 채팅 응답과 .docx 문서 양쪽 모두에 항상 포함한다.
+유의사항은 생략하지 않는다. 합의서를 생성할 때마다 채팅 응답과 .docx 문서 양쪽 모두에 넣는다.
 
 ---
 

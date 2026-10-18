@@ -10,15 +10,11 @@ const {
 } = require('docx');
 const fs = require('fs');
 
-// ── CTA 변호사 정보 (공통 설정) ──────────────────────────────────
-const CTA = {
-  name: '이영남',
-  title: '변호사',
-  phone: '010-8652-4348',
-  email: 'ibiubu70@gmail.com',
-  website: 'www.thechain.lawyer',
-  docType: '형사 합의서',
-};
+// ── 산출물 끝 안내 (정본 references/cta-config.md — 상담 안내는 사무소 정보 파일이 있을 때만) ──
+const cta = require('./cta');
+const NOTICE = cta.notice();
+const OFFICE = cta.loadOffice();
+const DOC_TYPE = '형사 합의서';
 
 // ── 인자 파싱 ─────────────────────────────────────────────────
 const args = process.argv.slice(2);
@@ -333,93 +329,34 @@ const children = [
   ),
 ];
 
-// ── 광고/안내 페이지 (별도 페이지) ──────────────────────────────
+// ── 유의사항·상담 안내 페이지 (별도 페이지) ──────────────────────
+const center = (children, before = 60, after = 60) =>
+  new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before, after }, children });
+const rule = (size, color, before, after) =>
+  new Paragraph({ border: { bottom: { style: BorderStyle.SINGLE, size, color, space: 1 } }, spacing: { before, after }, children: [] });
+
+const officeBlock = OFFICE ? [
+  rule(2, "CCCCCC", 100, 300),
+  center([t("[상담 안내]", { bold: true, size: 24, color: "555555" })], 200, 200),
+  center([t(`${OFFICE.title} ${OFFICE.name}`, { bold: true, size: 22, color: "333333" })], 80, 60),
+  ...[["전화", OFFICE.phone], ["이메일", OFFICE.email], ["홈페이지", OFFICE.website]]
+    .filter(([, v]) => v)
+    .map(([k, v]) => center([t(`${k}: `, { size: 20, color: "666666" }), t(v, { size: 20, color: "333333" })])),
+] : [];
+
 const disclaimerChildren = [
   new Paragraph({ spacing: { before: 600, after: 400 }, children: [] }),
-
-  // 구분선
-  new Paragraph({
-    border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: "AAAAAA", space: 1 } },
-    spacing: { before: 0, after: 300 },
-    children: []
-  }),
-
-  // [유의사항]
-  new Paragraph({
-    alignment: AlignmentType.CENTER,
-    spacing: { before: 200, after: 200 },
-    children: [t("[유의사항]", { bold: true, size: 24, color: "555555" })]
-  }),
-  new Paragraph({
-    alignment: AlignmentType.CENTER,
-    spacing: { before: 80, after: 40 },
-    children: [t("본 문서는 AI가 작성한 초안입니다.", { size: 20, color: "666666" })]
-  }),
-  new Paragraph({
-    alignment: AlignmentType.CENTER,
-    spacing: { before: 40, after: 40 },
-    children: [t("AI는 실수할 수 있습니다.", { size: 20, color: "666666" })]
-  }),
-  new Paragraph({
-    alignment: AlignmentType.CENTER,
-    spacing: { before: 40, after: 40 },
-    children: [t("보다 전문적인 도움을 원하시면", { size: 20, color: "666666" })]
-  }),
-  new Paragraph({
-    alignment: AlignmentType.CENTER,
-    spacing: { before: 40, after: 200 },
-    children: [t(`${CTA.name} ${CTA.title}와 상의하세요`, { size: 20, color: "666666" })]
-  }),
-
-  // 구분선
-  new Paragraph({
-    border: { bottom: { style: BorderStyle.SINGLE, size: 2, color: "CCCCCC", space: 1 } },
-    spacing: { before: 100, after: 300 },
-    children: []
-  }),
-
-  // [상담 안내]
-  new Paragraph({
-    alignment: AlignmentType.CENTER,
-    spacing: { before: 200, after: 200 },
-    children: [t("[상담 안내]", { bold: true, size: 24, color: "555555" })]
-  }),
-  new Paragraph({
-    alignment: AlignmentType.CENTER,
-    spacing: { before: 80, after: 60 },
-    children: [t(`${CTA.title} ${CTA.name}`, { bold: true, size: 22, color: "333333" })]
-  }),
-  new Paragraph({
-    alignment: AlignmentType.CENTER,
-    spacing: { before: 60, after: 60 },
-    children: [
-      t("전화: ", { size: 20, color: "666666" }),
-      t(CTA.phone, { size: 20, color: "333333" }),
-      t("    이메일: ", { size: 20, color: "666666" }),
-      t(CTA.email, { size: 20, color: "333333" }),
-    ]
-  }),
-  new Paragraph({
-    alignment: AlignmentType.CENTER,
-    spacing: { before: 60, after: 200 },
-    children: [
-      t("홈페이지: ", { size: 20, color: "666666" }),
-      t(CTA.website, { size: 20, color: "333333" }),
-    ]
-  }),
-
-  // 하단 주의 문구
+  rule(6, "AAAAAA", 0, 300),
+  center([t("[유의사항]", { bold: true, size: 24, color: "555555" })], 200, 200),
+  center([t(NOTICE, { size: 20, color: "666666" })], 80, 200),
+  ...officeBlock,
   new Paragraph({ spacing: { before: 300, after: 0 }, children: [] }),
   new Paragraph({
     border: { top: { style: BorderStyle.SINGLE, size: 2, color: "CCCCCC", space: 1 } },
     spacing: { before: 200, after: 0 },
     children: []
   }),
-  new Paragraph({
-    alignment: AlignmentType.CENTER,
-    spacing: { before: 120, after: 80 },
-    children: [t("※  본 안내는 합의서 본문이 아닙니다. 우체국 제출 시 본 페이지는 제외하십시오.", { size: 18, color: "999999", italics: true })]
-  }),
+  center([t(`※  본 안내는 ${DOC_TYPE} 본문이 아닙니다. 법원/기관 제출 시 본 페이지는 제외하십시오.`, { size: 18, color: "999999", italics: true })], 120, 80),
 ];
 
 const doc = new Document({

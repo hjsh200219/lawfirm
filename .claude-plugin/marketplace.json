@@ -1,7 +1,7 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "lawfirm",
-  "description": "한국 변호사용 법률 업무 플러그인(lawfirm) 마켓플레이스 — 의도 기반 민사 서면·법률 문서 스킬 6종·판례·법령 검색(법제처·빅케이스·미국·독일). AI는 실수할 수 있으며 최종 검토는 사용 변호사의 책임입니다.",
+  "description": "한국 변호사용 법률 업무 플러그인(lawfirm) 마켓플레이스 — 의도 기반 민사 서면·법률 문서 스킬 6종·판례·법령 검색(법제처·빅케이스·미국·독일). AI는 실수할 수 있으며 최종 검토와 제출 판단은 사용 변호사의 책임입니다.",
   "owner": {
     "name": "hoshin"
   },

@@ -10,7 +10,7 @@
 | 스킬 절차(모델이 읽는 정본) | `skills/intent-brief/SKILL.md` · `skills/case-search/SKILL.md` |
 | 해외 판례 클라이언트(표준 라이브러리, Python 3.9) | `skills/case-search/scripts/foreigncase.py` — 미국 CourtListener·독일 OpenLegalData · 키 등록 명령 `commands/law-key-setup.md` |
 | 빅케이스 클라이언트(uv inline 의존성) | `skills/case-search/scripts/bigcase.py` · 설정 명령 `commands/case-search-setup.md` · API 근거 [docs/case-search/bigcase-api.md](docs/case-search/bigcase-api.md) · LBOX 정찰 [docs/case-search/lbox/](docs/case-search/lbox/README.md) |
-| 내장 스킬 6개(lyn-lawfirm `9d620a9` 복사, 이후 따로 감) | `skills/certified-letter/` 외 5개 — 법령·판례는 `references/law-lookup.md`, CTA 는 `references/cta-config.md` |
+| 내장 스킬 6개(lyn-lawfirm `9d620a9` 복사, 이후 따로 감) | `skills/certified-letter/` 외 5개 — 법령·판례는 `references/law-lookup.md`, 산출물 끝 유의사항(1문장)·상담 안내(사용 변호사의 사무소 정보가 있을 때만 — D-11)는 `references/cta-config.md` |
 | 0.6.0 스킬(런타임은 표준 라이브러리, Python 3.9) | `skills/litigation-calc/`(`deadline.py`·`costs.py`·`dday.py`, 공휴일 `skills/litigation-calc/references/holidays.json` 2024–2028 ← `dev/holidays_kasi.py`, 2029년 자료가 나오면 다시 생성) · `skills/brainstorming-lawfirm/`(`risk.py`) · `skills/review-contract/`(`playbook.py`, 기본 플레이북 `references/`) · `skills/triage-nda/` · `skills/independent-review/`(`doc_text.py`) · `skills/site-api/`(`extract.py`·`scaffold.py`, uv 쪽 `discover.py`·`templates/client.py.tmpl`) |
 | 세션 시작 훅 | `hooks/hooks.json` → `dday.py hook`(다가오는 기한이 없으면 출력 없음 — 사건이 많아 상한에 걸리면 경고 1줄, 어떤 오류에도 exit 0) |
 | 제3자 고지 | [third_party/anthropic-legal/NOTICE.md](third_party/anthropic-legal/NOTICE.md)(review-contract·triage-nda·위험 점수표 — Apache-2.0) · 법률 문서 공통 구성안 절차 `references/outline-approval.md` |
