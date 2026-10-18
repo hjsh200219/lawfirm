@@ -27,7 +27,7 @@
 ```
 uv run --no-project --with pytest --with python-docx==1.2.0 pytest tests/            # 전체(문서 검사 포함)
 uv run --no-project --python 3.9 --with pytest --with python-docx==1.2.0 pytest tests/  # 받는 PC 최저 버전
-uv run --no-project --with "scrapling[fetchers]>=0.4.11" --with keyring --with pytest --with python-docx==1.2.0 pytest tests/case_search -q  # 빅케이스
+uv run --no-project --with "scrapling[fetchers]>=0.4.11,<0.5" --with "keyring>=25,<26" --with pytest --with python-docx==1.2.0 pytest tests/case_search -q  # 빅케이스
 claude plugin validate --strict .                                                     # 매니페스트
 python3 dev/verify_docs.py                                                             # 문서 링크·버전·줄 수
 ```

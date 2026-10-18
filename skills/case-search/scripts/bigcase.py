@@ -1,7 +1,7 @@
 #!/usr/bin/env -S uv run --script
 # /// script
 # requires-python = ">=3.10"
-# dependencies = ["scrapling[fetchers]>=0.4.11", "keyring>=25"]
+# dependencies = ["scrapling[fetchers]>=0.4.11,<0.5", "keyring>=25,<26"]
 # ///
 """bigcase — 빅케이스(bigcase.ai) 로그인·판례 검색을 브라우저 없이 한다(Scrapling).
 

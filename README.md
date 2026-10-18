@@ -69,7 +69,7 @@ codex plugin add lawfirm@lawfirm
 
 ### uv·Scrapling
 
-빅케이스 검색과 `site-api` 는 [Scrapling](https://github.com/D4Vinci/Scrapling)(브라우저 없이 사이트를 부르는 Python 라이브러리)을 씁니다. 직접 설치할 필요는 없습니다 — 스크립트를 `uv run` 으로 실행하면 uv 가 Scrapling(`scrapling[fetchers]>=0.4.11`)·keyring 을 알아서 받습니다.
+빅케이스 검색과 `site-api` 는 [Scrapling](https://github.com/D4Vinci/Scrapling)(브라우저 없이 사이트를 부르는 Python 라이브러리)을 씁니다. 직접 설치할 필요는 없습니다 — 스크립트를 `uv run` 으로 실행하면 uv 가 Scrapling(`scrapling[fetchers]>=0.4.11,<0.5`)·keyring(`>=25,<26`)을 알아서 받습니다.
 
 1. uv 설치(한 번): macOS `curl -LsSf https://astral.sh/uv/install.sh | sh` · Windows `winget install --id=astral-sh.uv -e`
 2. (`site-api` 의 네트워크 발굴 `--cdp` 나 브라우저가 필요한 사이트를 쓸 때만) 브라우저 엔진 한 번 설치: `uv tool run --from "scrapling[fetchers]" scrapling install` — 수백 MB 를 내려받습니다.
@@ -142,7 +142,7 @@ codex plugin add lawfirm@lawfirm
 
 ```
 uv run --no-project --with pytest --with python-docx==1.2.0 pytest tests/
-uv run --no-project --with "scrapling[fetchers]>=0.4.11" --with keyring --with pytest --with python-docx==1.2.0 pytest tests/case_search -q
+uv run --no-project --with "scrapling[fetchers]>=0.4.11,<0.5" --with "keyring>=25,<26" --with pytest --with python-docx==1.2.0 pytest tests/case_search -q
 ```
 런타임 스크립트는 표준 라이브러리만 씁니다(테스트로 확인) — 예외는 uv inline 의존성을 쓰는 `bigcase.py`·`site-api` 의 `discover.py`·생성 클라이언트. 빅케이스 스크립트(`skills/case-search/scripts/bigcase.py`)는 uv inline 의존성(Scrapling·keyring)을 씁니다. API 형식 근거·실측 기록은 `docs/case-search/bigcase-api.md`. `dev/` 는 개발 전용입니다. 개발 지도·불변 조건은 [AGENTS.md](AGENTS.md).
 

@@ -1,6 +1,6 @@
 """오프라인 단위 테스트 — 네트워크·키체인을 쓰지 않는다.
 
-실행: uv run --no-project --with "scrapling[fetchers]>=0.4.11" --with keyring --with pytest --with python-docx==1.2.0 pytest tests -q
+실행: uv run --no-project --with "scrapling[fetchers]>=0.4.11,<0.5" --with "keyring>=25,<26" --with pytest --with python-docx==1.2.0 pytest tests -q
 """
 import base64
 import json

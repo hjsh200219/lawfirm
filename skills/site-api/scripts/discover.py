@@ -1,7 +1,7 @@
 #!/usr/bin/env -S uv run --script
 # /// script
 # requires-python = ">=3.10"
-# dependencies = ["scrapling[fetchers]>=0.4.11"]
+# dependencies = ["scrapling[fetchers]>=0.4.11,<0.5"]
 # ///
 """URL 하나에서 API 후보를 찾는다 — 실행: uv run discover.py <URL> [--out 폴더] [--cdp http://localhost:9222 --scroll 3]
 
