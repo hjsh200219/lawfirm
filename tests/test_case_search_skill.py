@@ -62,6 +62,15 @@ def test_frontmatter_allows_python_and_triggers_law():
         assert word in desc, word
 
 
+def test_description_catches_us_opinion_questions():
+    """「미국 연방대법원 ○○ 판결문 본문 인용」 질문에서 자동 선택 0/12(QUALITY.md FR-26) — 그런 질문의 낱말과
+    해외 판결문을 웹·curl 보다 이 스킬로 확인하라는 문장이 description 에 있어야 한다."""
+    desc = re.search(r"(?m)^description:(.*)$", _front(read(SKILL))).group(1)
+    for word in ("연방대법원", "Supreme Court", "SCOTUS", "판결문 원문", "영어 원문", "opinion", "citation"):
+        assert word in desc, word
+    assert re.search(r"웹 검색·curl 보다 이 스킬", desc)
+
+
 def test_keys_come_from_input_window_not_chat():
     """키는 입력 창(`key set --prompt`)으로 받는다 — 명령행 인자(`key set <값>`)나 채팅으로 받으라는 안내가 없어야 한다."""
     text = read(SKILL)
