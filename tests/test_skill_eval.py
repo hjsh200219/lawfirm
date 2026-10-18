@@ -219,3 +219,15 @@ def test_run_refuses_out_under_personal_skill_dirs(tmp_path):
     assert rc == 6 and calls == []
     assert E.skill_dirs_above(str(home / ".cache" / "eval")) == [str(home / ".claude")]
     assert E.skill_dirs_above(str(tmp_path / "clean" / "x")) == []
+
+
+@pytest.mark.parametrize("t,man,ok", [("5,000만원", 5000, True), ("5000만 원", 5000, True), ("금 50,000,000원", 5000, True),
+                                      ("5천만원", 5000, True), ("40,000,000원", 4000, True), ("15,000,000원", 5000, False),
+                                      ("550,000,000원", 5000, False)])
+def test_amount_notation(t, man, ok):
+    assert E.has_amount(t, man) is ok
+
+
+def test_ib_rubric_accepts_won_notation():
+    t = "x" * 600 + "\n\n피고의 주장은 사실이 아닙니다. 원고의 청구를 전부 인용하여 피고는 원고에게 50,000,000원을 지급하라."
+    assert E.ib_rubric("IB1", t, set())["R2"]

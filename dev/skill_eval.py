@@ -201,15 +201,24 @@ def _any(t, words):
     return any(w in t for w in words)
 
 
+def has_amount(t, man):
+    """금액 표기 차이(5,000만·5000만·5천만·50,000,000원)를 같은 금액으로 본다 — man 은 만 원 단위."""
+    won = man * 10000
+    forms = ["{:,}만".format(man), "%d만" % man, "{:,}".format(won), "%d" % won]
+    if man % 1000 == 0:
+        forms.append("%d천만" % (man // 1000))
+    return any(re.search(r"(?<![\d,])%s(?![\d,])" % re.escape(f), t) for f in forms)
+
+
 def ib_rubric(sid, text, allowed):
     ph = e2e.P.load_phrases()
     deny, admit = ph["stance_markers"]["deny"], ph["stance_markers"]["admit"]
     t = text or ""
     combo = SCENARIOS[sid]["combo"]
     if combo == "F1A":
-        r2 = "5,000만" in t and _any(t, deny) and ("인용" in t or "지급하라" in t)
+        r2 = has_amount(t, 5000) and _any(t, deny) and ("인용" in t or "지급하라" in t)
     elif combo == "F1B":
-        r2 = "조정" in t and "4,000만" in t and _any(t, admit)
+        r2 = "조정" in t and has_amount(t, 4000) and _any(t, admit)
     else:
         r2 = all(w in t for w in ("주위적", "예비적", "공제")) and _any(t, admit)
     r3, bad = citation_ok(t, RECORDED_CASES | set(allowed))
