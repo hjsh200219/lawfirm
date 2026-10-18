@@ -1,0 +1,157 @@
+"""FR-27 짝지은 평가 구동기(dev/skill_eval.py) — 명령 조립·격리·기준표·호출 상한(과금 0, 모델 호출 없음)."""
+import os
+import sys
+import types
+
+import pytest
+
+from conftest import ROOT
+
+sys.path.insert(0, os.path.join(ROOT, "dev"))
+import skill_eval as E  # noqa: E402
+
+
+def test_six_scenarios_two_skills():
+    assert sorted(E.SCENARIOS) == ["CS1", "CS2", "CS3", "IB1", "IB2", "IB3"]
+    assert {s["skill"] for s in E.SCENARIOS.values()} == {"intent-brief", "case-search"}
+    assert E.ARMS == ("with", "without")
+
+
+def test_eval_env_blocks_real_services(tmp_path):
+    env = E.eval_env("http://127.0.0.1:9/DRF", str(tmp_path))
+    assert env["INTENT_BRIEF_LAW_URL"] == "http://127.0.0.1:9/DRF" and env["INTENT_BRIEF_NO_CASESEARCH"] == "1"
+    assert env["INTENT_BRIEF_NO_NOTICE"] == "1" and env["INTENT_BRIEF_LAW_OC"]
+    assert env["BIGCASE_KEYRING_SERVICE"] != "case-search-bigcase"
+    assert env["CASE_SEARCH_HOME"].startswith(str(tmp_path))
+
+
+@pytest.mark.parametrize("arm", E.ARMS)
+def test_claude_cmd_differs_only_in_plugin_dir(arm):
+    cmd = E.claude_cmd(arm, "sonnet", claude="claude")
+    assert ("--plugin-dir" in cmd) is (arm == "with")
+    if arm == "with":
+        assert cmd[cmd.index("--plugin-dir") + 1] == E.REPO
+    assert "WebFetch,WebSearch" in cmd and cmd[cmd.index("--disallowedTools") - 1] != "--plugin-dir"
+    assert "-p" in cmd and "stream-json" in cmd and cmd[cmd.index("--model") + 1] == "sonnet"
+    rest = [x for x in cmd if x not in ("--plugin-dir", E.REPO)]
+    assert rest == [x for x in E.claude_cmd("without", "sonnet", claude="claude")]
+
+
+def test_claude_env_isolated_config_and_token(tmp_path):
+    tok = tmp_path / "tok"
+    tok.write_text("tok-value\n")
+    env = E.claude_env(str(tmp_path / "run"), {"A": "1"}, {"PATH": "/bin", "CLAUDE_CONFIG_DIR": "/real"}, str(tok))
+    assert env["CLAUDE_CONFIG_DIR"] == os.path.join(str(tmp_path / "run"), "claude-config")
+    assert env["CLAUDE_CODE_OAUTH_TOKEN"] == "tok-value" and env["A"] == "1" and env["PATH"] == "/bin"
+
+
+def test_claude_env_requires_token(tmp_path):
+    with pytest.raises(E.EvalError):
+        E.claude_env(str(tmp_path), {}, {}, str(tmp_path / "없음"))
+
+
+def test_codex_config_sets_env_explicitly():
+    t = E.codex_config({"BIGCASE_KEYRING_SERVICE": "x-none", "INTENT_BRIEF_LAW_URL": "http://127.0.0.1:1/DRF"})
+    assert "[shell_environment_policy.set]" in t and 'BIGCASE_KEYRING_SERVICE = "x-none"' in t
+    assert "hooks = false" in t
+
+
+def test_codex_cmd(tmp_path):
+    cmd = E.codex_cmd(str(tmp_path), "질문", codex="codex")
+    assert cmd[:2] == ["codex", "exec"] and "--dangerously-bypass-approvals-and-sandbox" in cmd and "--json" in cmd
+    assert "--skip-git-repo-check" in cmd and cmd[-1] == "질문" and "--ignore-user-config" not in cmd
+
+
+def test_case_search_prompt_same_for_both_arms():
+    for sid in ("CS1", "CS2", "CS3"):
+        assert E.cs_prompt(sid) and "lawapi" not in E.cs_prompt(sid) and "스킬" not in E.cs_prompt(sid)
+
+
+def test_intent_brief_prompts():
+    kw = dict(brief="준비서면", design="/r/design.json", case="/r/case", draft="/r/d.md", wd="/r", lawenv="A=1")
+    w, wo = E.ib_prompt("with", **kw), E.ib_prompt("without", **kw)
+    assert "cite_check.py" in w and "SKILL.md" in w
+    assert "cite_check.py" not in wo and "SKILL.md" not in wo and "스크립트" not in wo
+    for p in (w, wo):
+        assert "/r/design.json" in p and "/r/d.md" in p and "질문하지" in p
+
+
+# ── 기준표 ──
+def test_extract_cases():
+    t = "대법원 2016. 2. 21. 선고 2016다 225353 판결, 서울중앙지법 2026가합12345, 2019도1234 · 제2조"
+    assert E.extract_cases(t) == {"2016다225353", "2026가합12345", "2019도1234"}
+
+
+def test_citation_hygiene():
+    ok = "대법원 2016다225353 판결 참조.\n\n대법원 2010다9999 판결[확인 필요: 법제처 미확인]."
+    bad = "대법원 2010다9999 판결에 따르면 그렇다."
+    assert E.citation_ok(ok, {"2016다225353"})[0]
+    res = E.citation_ok(bad, {"2016다225353"})
+    assert not res[0] and res[1] == ["2010다9999"]
+
+
+def test_ib_rubric_f1a():
+    t = "원고 준비서면\n\n피고의 변제 주장은 사실이 아닙니다. " * 40 + "\n\n피고는 원고에게 5,000만원을 지급하라는 판결을 구합니다. 청구 전부 인용."
+    r = E.ib_rubric("IB1", t, set())
+    assert r["pass"] and r["R1"] and r["R2"] and r["R3"]
+    assert not E.ib_rubric("IB1", "짧다", set())["pass"]
+
+
+def test_ib_rubric_f1b_and_f2b():
+    t1 = "x" * 600 + "\n\n변제 1,000만원은 인정합니다. 조정에 회부해 주시고, 조정이 성립하지 않으면 4,000만원을 지급하라."
+    assert E.ib_rubric("IB2", t1, set())["pass"]
+    t2 = "x" * 600 + "\n\n일부 차용 사실은 인정합니다. 주위적으로 청구를 기각하고, 예비적으로 변제액을 공제한 나머지만 인정."
+    assert E.ib_rubric("IB3", t2, set())["pass"]
+    assert not E.ib_rubric("IB3", "x" * 600 + " 청구를 기각하라", set())["pass"]
+
+
+def test_cs_rubric():
+    art = "제288조(불요증사실) 법원에서 당사자가 자백한 사실과 현저한 사실은 증명을 필요로 하지 아니한다. 다만, 진실에 어긋나는 자백은 그것이 착오로 말미암은 것임을 증명한 때에는 취소할 수 있다."
+    assert E.cs_rubric("CS1", "원문:\n" + art)["pass"]
+    assert not E.cs_rubric("CS1", art.replace("때에는", "경우에는"))["pass"]
+    assert E.cs_rubric("CS2", "판결요지: " + E.SCENARIOS["CS2"]["expect"])["pass"]
+    assert E.cs_rubric("CS3", "법제처에서 대법원 2019다12345 판결을 찾지 못했습니다.")["pass"]
+    assert not E.cs_rubric("CS3", "이 판결은 [1] 계약 해제의 효과에 관하여 판시하였다.")["pass"]
+    assert not E.cs_rubric("CS3", "찾지 못했습니다. 다만 [1] 계약 해제는 원상회복 의무를 진다고 판시하였다.")["pass"]
+
+
+def test_audit_events():
+    ev = '{"type":"tool","input":{"command":"curl https://www.law.go.kr/x"}}\n{"name":"WebFetch"}\n{"cmd":"python3 lawapi.py law 민사소송법"}'
+    a = E.audit_events(ev)
+    assert a["law.go.kr"] == 1 and a["WebFetch"] == 1 and a["lawapi.py"] == 1 and a["bigcase"] == 0
+
+
+# ── 호출 상한·사전 시험 순서(모델 호출 없이) ──
+def _args(tmp_path, **kw):
+    d = dict(env="claude", out=str(tmp_path), runs=3, jobs=1, only=None, arms=None, model="sonnet", max_calls=36,
+             weekly_cap=0.95, resume=None)
+    d.update(kw)
+    return types.SimpleNamespace(**d)
+
+
+def test_run_refuses_over_cap(tmp_path, capsys):
+    calls = []
+    rc = E.cmd_run(_args(tmp_path, max_calls=35), runner=lambda *x: calls.append(x), precheck=lambda o: {"ok": True},
+                   usage=lambda: 0.5)
+    assert rc == 2 and calls == []
+    assert "claude -p 36회" in capsys.readouterr().out
+
+
+def test_run_stops_when_precheck_fails(tmp_path):
+    calls = []
+    rc = E.cmd_run(_args(tmp_path), runner=lambda *x: calls.append(x), precheck=lambda o: {"ok": False}, usage=lambda: 0.5)
+    assert rc == 3 and calls == []
+
+
+def test_run_stops_over_weekly_cap(tmp_path):
+    calls = []
+    rc = E.cmd_run(_args(tmp_path), runner=lambda *x: calls.append(x), precheck=lambda o: {"ok": True}, usage=lambda: 0.96)
+    assert rc == 4 and calls == []
+
+
+def test_run_dispatches_all_jobs(tmp_path, capsys):
+    calls = []
+    rc = E.cmd_run(_args(tmp_path, env="codex", runs=1), runner=lambda out, job: calls.append(job) or True,
+                   precheck=lambda o: {"ok": True}, usage=lambda: 0.0)
+    assert rc == 0 and len(calls) == 12
+    assert "Codex 12회" in capsys.readouterr().out
