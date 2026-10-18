@@ -42,6 +42,20 @@ def load_phrases():
     return load_json(os.path.join(REFS_DIR, "phrases.json"))
 
 
+def load_response_keys():
+    """법제처·빅케이스 응답 키 목록 — 받는 PC 형식 검사와 개발 PC 계약 점검이 같은 파일을 읽는다."""
+    return load_json(os.path.join(REFS_DIR, "response-keys.json"))
+
+
+# 응답 형식이 바뀌었을 때 설명 끝에 붙이는 안내 — 유지보수자에게 닿는 길은 이 신고뿐이다(통계는 PC 밖으로 나가지 않는다)
+FORMAT_GUIDE = "플러그인을 최신 판으로 업데이트하고, 계속되면 repo 이슈로 알려 주십시오(사건 내용·의뢰인 정보는 적지 마십시오)"
+
+
+def nows(s):
+    """번호·이름 비교용 — 공백을 모두 지운다(사건번호 「2016다 225353」·법령명 띄어쓰기)."""
+    return re.sub(r"\s+", "", s or "")
+
+
 def today():
     """오늘 날짜. INTENT_BRIEF_TODAY 는 개발·테스트 전용(픽스처 기일이 지난 날짜라 고정이 필요)."""
     v = os.environ.get("INTENT_BRIEF_TODAY")

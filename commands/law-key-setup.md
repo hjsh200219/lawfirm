@@ -21,11 +21,13 @@ allowed-tools: Bash(python3:*), Bash(python:*), Bash(py:*)
 "$PY" "${CLAUDE_PLUGIN_ROOT}/skills/intent-brief/scripts/lawapi.py" key set --prompt
 ```
 
-Bash 도구 `timeout` 은 **600000**(10분) — 사람이 입력하는 동안 끊기면 안 된다. 판례 1건으로 키를 검증한 뒤에만 저장한다(macOS `~/.intent-brief/config.json`, Windows `%LOCALAPPDATA%\intent-brief\config.json`, 본인만 읽기).
+Bash 도구 `timeout` 은 **600000**(10분) — 사람이 입력하는 동안 끊기면 안 된다. 키 오류 검사를 통과해야 저장한다(판례 1건 조회 — 판례 검색 형식이 바뀐 날은 「확인 안 됨」으로 저장). 키는 작업 폴더의 config.json 에 저장합니다(macOS `~/.intent-brief/config.json` 은 이 PC 사용자만 읽게 권한 0600, Windows `%LOCALAPPDATA%\intent-brief\config.json` 은 파일 권한을 따로 바꾸지 않음). 키 값은 출력·캐시·오류 문구에 쓰지 않습니다.
 
 결과에 따라:
-- `ok: true` → 「저장했습니다」. 값은 다시 출력하지 않는다.
+- `ok: true`·`checked: true` → 「저장했습니다」. 값은 다시 출력하지 않는다.
+- `ok: true`·`checked: false`(`warning` 있음) → 키 오류 검사는 통과해 저장했지만 판례 검색 응답 형식이 바뀌어 확인하지 못한 것(「확인 안 됨」). 그대로 알리고 나중에 `cite_check.py ping` 으로 다시 확인하게 한다.
 - `key_invalid` → 키가 틀렸거나 이 PC 의 IP 가 법제처에 등록되지 않은 것. 그대로 알리고 open.law.go.kr 에서 IP 를 확인하게 한다.
+- `format_changed`(저장 안 함) → 법제처가 JSON 이 아닌 응답(점검 화면 등)을 줘 키를 검증하지 못한 것. `--no-check` 로 저장하고 나중에 `cite_check.py ping` 으로 확인할 수 있다. `guide` 의 업데이트·신고 안내를 그대로 전한다.
 - `outage` → 법제처 장애로 검증하지 못한 것. `--no-check` 를 붙여 다시 받아 저장하고, 나중에 `cite_check.py ping` 으로 확인한다.
 - `network_blocked` 면 Codex 샌드박스가 네트워크를 막은 것이다(법제처 장애가 아니다) — `--no-check` 나 장애 태그로 넘기지 말고 네트워크 허용(권한 상승)으로 같은 명령을 다시 실행한다.
 - 「입력을 취소했습니다」 → 저장하지 않았다고 알린다.
@@ -42,4 +44,4 @@ Bash 도구 `timeout` 은 **600000**(10분) — 사람이 입력하는 동안 �
 "$PY" "${CLAUDE_PLUGIN_ROOT}/skills/case-search/scripts/foreigncase.py" key set us --prompt
 ```
 
-저장 위치는 `~/.case-search/foreign.json`(본인만 읽기). 확인은 `foreigncase.py key status`(값은 출력하지 않음).
+저장 위치는 `~/.case-search/foreign.json`(macOS·Linux 는 이 PC 사용자만 읽게 권한 0600, Windows 는 파일 권한을 따로 바꾸지 않음). 확인은 `foreigncase.py key status`(값은 출력하지 않음).

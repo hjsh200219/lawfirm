@@ -6,7 +6,7 @@ MCP 를 거치지 않는다. 표준 라이브러리만 쓴다.
 
 사용:
   lawapi.py key status                       키 등록 여부·출처(값은 출력하지 않음)
-  lawapi.py key set (<OC> | --stdin) [--no-check]   키 저장(기본: 판례 1건 조회로 검증 뒤 저장)
+  lawapi.py key set (<OC> | --stdin) [--no-check]   키 저장(기본: 키 오류 검사를 통과해야 저장 — 판례 1건 조회)
   lawapi.py key clear
   lawapi.py law <법령명> [--article 288 | 266-2]
   lawapi.py prec-search <검색어> [--nb | --fulltext] [--court 대법원] [--display 20] [--page 1]
@@ -118,7 +118,11 @@ def sandbox_network_blocked():
 
 
 class FormatChanged(Exception):
-    """응답을 해석하지 못했다."""
+    """응답 형식이 바뀌었다 — 「미확인」으로 넘기지 않고 드러낸다."""
+
+
+class NotJson(FormatChanged):
+    """JSON 이 아닌 응답(점검 화면 HTML 등) — 사용자 검증 전이라 키가 맞는지 모른다."""
 
 
 # ── 키 ────────────────────────────────────────────────────────
@@ -220,7 +224,7 @@ class Client:
             try:
                 obj = json.loads(body)
             except ValueError:
-                raise FormatChanged("JSON 이 아닌 응답: %s" % _mask(body[:120]))
+                raise NotJson("JSON 이 아닌 응답: %s" % _mask(body[:120]))
             if isinstance(obj, dict) and "사용자 정보 검증" in str(obj.get("result", "")):
                 raise KeyInvalid("법제처 사용자 검증 실패 — 키(OC)가 틀렸거나 이 PC 의 IP·도메인이 등록되지 않았습니다")
             return obj
@@ -233,8 +237,27 @@ def _list(v):
     return v if isinstance(v, list) else [v]
 
 
-def _nows(s):
-    return re.sub(r"\s+", "", s or "")
+_KEYS = P.load_response_keys()["law"]
+
+
+def check_search(root, kind, page=1, matched=True):
+    """검색 응답 형식 검사(받는 PC — 추가 호출 0). kind 는 law·prec.
+
+    ① 항목이 1개 이상인데 모든 항목이 필수 키 중 하나 이상을 갖추지 못함 ② 1쪽에서 총건수 1 이상인데 항목 0(목록 키 변경)
+    ③ 일치 항목이 없어 총건수를 읽는 자리에서 총건수 키가 없음. 결과 0건(총건수 0·목록 키 없음)은 정상이다.
+    """
+    spec = _KEYS["law_search" if kind == "law" else "prec_search"]
+    items = [it for it in _list(root.get(spec["list"])) if isinstance(it, dict)]
+    if items and all(any(k not in it for k in spec["required"]) for it in items):
+        raise FormatChanged("응답 형식 변경 — %s 항목에 필수 키(%s)가 없음" % (spec["container"], "·".join(spec["required"])))
+    try:
+        total = int(root.get(spec["count"]) or 0)
+    except (TypeError, ValueError):
+        total = 0
+    if page == 1 and total >= 1 and not items:
+        raise FormatChanged("응답 형식 변경 — %s 총건수 %d 인데 목록(%s)이 없음" % (spec["container"], total, spec["list"]))
+    if not matched and spec["count"] not in root:
+        raise FormatChanged("응답 형식 변경 — %s 에 %s 없음" % (spec["container"], spec["count"]))
 
 
 # ── 법령·조문 ─────────────────────────────────────────────────
@@ -242,20 +265,24 @@ LAW_DISPLAY = 100
 LAW_PAGES = 5
 
 
-def search_law(client, name):
-    """법령명(또는 약칭) 정확 일치 → {law_id, name, mst, effective} 또는 None."""
+def search_law(client, name, strict=False):
+    """법령명(또는 약칭) 정확 일치 → {law_id, name, mst, effective} 또는 None. strict 면 응답 형식을 검사한다(호출 지점이 켠다)."""
     # 짧은 이름(「상법」)은 결과가 많아 첫 쪽 밖에 있다(2026-10-15 실측 56건 중 34번째) — 쪽을 넘겨 본다(최대 LAW_PAGES 쪽)
-    want = _nows(name)
+    want = P.nows(name)
     for page in range(1, LAW_PAGES + 1):
         obj = client.get("lawSearch.do", target="law", query=name, display=LAW_DISPLAY, page=page)
         root = obj.get("LawSearch")
         if not isinstance(root, dict):
             raise FormatChanged("LawSearch 없음")
+        if strict:
+            check_search(root, "law", page)
         items = _list(root.get("law"))
         for it in items:
-            if want in (_nows(it.get("법령명한글")), _nows(it.get("법령약칭명"))) and it.get("현행연혁코드", "현행") == "현행":
+            if want in (P.nows(it.get("법령명한글")), P.nows(it.get("법령약칭명"))) and it.get("현행연혁코드", "현행") == "현행":
                 return {"law_id": it.get("법령ID"), "name": it.get("법령명한글"), "mst": it.get("법령일련번호"),
                         "effective": it.get("시행일자")}
+        if strict:
+            check_search(root, "law", page, matched=False)
         try:
             total = int(root.get("totalCnt") or 0)
         except ValueError:
@@ -334,8 +361,7 @@ def _prec_item(it):
             "kind": it.get("판결유형"), "type": it.get("사건종류명")}
 
 
-def search_prec(client, query=None, nb=None, display=20, page=1, fulltext=False, court=None):
-    """판례 목록. nb 는 사건번호 검색(정확 일치 후보), query 는 사건명(기본)·본문(fulltext) 검색."""
+def _prec_root(client, query=None, nb=None, display=20, page=1, fulltext=False, court=None):
     params = {"target": "prec", "display": display, "page": page}
     if nb:
         params["nb"] = nb
@@ -349,6 +375,12 @@ def search_prec(client, query=None, nb=None, display=20, page=1, fulltext=False,
     root = obj.get("PrecSearch")
     if not isinstance(root, dict):
         raise FormatChanged("PrecSearch 없음")
+    return root
+
+
+def search_prec(client, query=None, nb=None, display=20, page=1, fulltext=False, court=None):
+    """판례 목록. nb 는 사건번호 검색(정확 일치 후보), query 는 사건명(기본)·본문(fulltext) 검색. 형식 검사는 하지 않는다."""
+    root = _prec_root(client, query, nb, display, page, fulltext, court)
     try:
         total = int(root.get("totalCnt") or 0)
     except ValueError:
@@ -376,11 +408,40 @@ def get_prec(client, prec_id):
             "body": clean(ps.get("판례내용"))}
 
 
-def find_prec_exact(client, number):
-    """사건번호 정확 일치 판례 목록(같은 번호의 여러 판결이 있을 수 있다)."""
-    want = _nows(number)
-    _, items = search_prec(client, nb=number, display=20)
-    return [it for it in items if _nows(it["number"]) == want]
+def find_prec_exact(client, number, strict=False):
+    """사건번호 정확 일치 판례 목록(같은 번호의 여러 판결이 있을 수 있다). strict 면 응답 형식을 검사한다."""
+    want = P.nows(number)
+    root = _prec_root(client, nb=number, display=20)
+    if strict:
+        check_search(root, "prec")
+    hits = [it for it in (_prec_item(x) for x in _list(root.get("prec"))) if P.nows(it["number"]) == want]
+    if strict and not hits:
+        check_search(root, "prec", matched=False)
+    return hits
+
+
+# ── 키 검증·오류 매핑(키 등록·cite_check ping 이 같이 쓴다) ──
+KEY_CHECK_CASE = "2016다225353"  # 공개 대법원 판례 — 키·IP 검증용 조회 1건
+
+
+def verify_key(client):
+    """판례 1건 조회로 키·IP 를 검증한다(응답 형식 검사는 켜지 않는다)."""
+    find_prec_exact(client, KEY_CHECK_CASE)
+
+
+def error_result(e):
+    """법제처 예외 → (출력 JSON, 종료 코드). CLI·ping 공용."""
+    if isinstance(e, NoKey):
+        return {"ok": False, "error": "no_key", "guide": str(e)}, 4
+    if isinstance(e, KeyInvalid):
+        return {"ok": False, "error": "key_invalid", "detail": str(e), "guide": KEY_GUIDE}, 4
+    if isinstance(e, NetworkBlocked):
+        return {"ok": False, "error": "network_blocked", "detail": str(e)}, 7
+    if isinstance(e, Unavailable):
+        return {"ok": False, "error": "outage", "detail": str(e)}, 5
+    if isinstance(e, FormatChanged):
+        return {"ok": False, "error": "format_changed", "detail": str(e), "guide": P.FORMAT_GUIDE}, 5
+    raise e
 
 
 # ── 법령용어 ──────────────────────────────────────────────────
@@ -562,9 +623,21 @@ def main(argv=None):
                 oc = (oc or "").strip()
                 if not oc:
                     raise P.BriefError("빈 키는 저장하지 않습니다")
-                if not a.no_check:
-                    find_prec_exact(Client(oc=oc), "2016다225353")  # 키·IP 검증(실패면 저장하지 않음)
-                return P.emit({"ok": True, "saved": save_key(oc), "checked": not a.no_check})
+                if a.no_check:
+                    return P.emit({"ok": True, "saved": save_key(oc), "checked": False})
+                try:
+                    verify_key(Client(oc=oc))  # 키 오류 검사를 통과해야 저장한다
+                except NotJson:
+                    out, _ = error_result(FormatChanged("응답 형식 변경으로 키를 검증하지 못했습니다 — `--no-check` 로 저장하고 "
+                                                        "나중에 `cite_check.py ping` 으로 확인할 수 있습니다"))
+                    return P.emit(out, 5)
+                except (KeyInvalid, Unavailable) as e:
+                    return P.emit(*error_result(e))
+                except FormatChanged:
+                    return P.emit({"ok": True, "saved": save_key(oc), "checked": False,
+                                   "warning": "키 오류 검사는 통과해 저장했지만 판례 검색 응답 형식이 바뀌어 확인하지 못했습니다 — "
+                                              "`cite_check.py ping` 으로 다시 확인하십시오"})
+                return P.emit({"ok": True, "saved": save_key(oc), "checked": True})
             return P.emit({"ok": True, "cleared": clear_key()})
         if a.cmd == "form-get":  # 파일은 키 없이 받는다
             return P.emit(dict(get_form(a.file_seq, a.out), ok=True))
@@ -573,7 +646,7 @@ def main(argv=None):
             return P.emit(dict(search_forms(c, a.query, admin=a.admin, kind=a.kind, by_law=a.law,
                                             display=a.display, page=a.page), ok=True))
         if a.cmd == "law":
-            law = search_law(c, a.name)
+            law = search_law(c, a.name, strict=True)
             if not law:
                 return P.emit({"ok": True, "found": False, "detail": "법령명 정확 일치 없음"})
             out = {"ok": True, "found": True, "law": law}
@@ -582,8 +655,14 @@ def main(argv=None):
                 out["article"] = get_article(c, law["law_id"], n, m)
             return P.emit(out)
         if a.cmd == "prec-search":
-            total, items = search_prec(c, nb=a.query if a.nb else None, query=None if a.nb else a.query,
-                                       display=a.display, page=a.page, fulltext=a.fulltext, court=a.court)
+            if a.nb and a.page == 1:  # 사건번호 검색 1쪽은 형식을 검사한다(제목·본문 검색·2쪽 이상은 끔)
+                root = _prec_root(c, nb=a.query, display=a.display, page=1, court=a.court)
+                items = [_prec_item(x) for x in _list(root.get("prec"))]
+                check_search(root, "prec", 1, matched=bool(items))
+                total = int(root.get("totalCnt") or 0)
+            else:
+                total, items = search_prec(c, nb=a.query if a.nb else None, query=None if a.nb else a.query,
+                                           display=a.display, page=a.page, fulltext=a.fulltext, court=a.court)
             return P.emit({"ok": True, "total": total, "page": a.page, "items": items})
         if a.cmd == "prec":
             d = get_prec(c, a.prec_id)
@@ -595,16 +674,8 @@ def main(argv=None):
                 search(c, a.target, a.query, a.display, a.page, a.fulltext), ensure_ascii=False)))})
         if a.cmd == "detail":
             return P.emit({"ok": True, "result": json.loads(_mask(json.dumps(detail(c, a.target, a.item_id), ensure_ascii=False)))})
-    except NoKey as e:
-        return P.emit({"ok": False, "error": "no_key", "guide": str(e)}, 4)
-    except KeyInvalid as e:
-        return P.emit({"ok": False, "error": "key_invalid", "detail": str(e), "guide": KEY_GUIDE}, 4)
-    except NetworkBlocked as e:
-        return P.emit({"ok": False, "error": "network_blocked", "detail": str(e)}, 7)
-    except Unavailable as e:
-        return P.emit({"ok": False, "error": "outage", "detail": str(e)}, 5)
-    except FormatChanged as e:
-        return P.emit({"ok": False, "error": "format_changed", "detail": str(e)}, 5)
+    except (NoKey, KeyInvalid, Unavailable, FormatChanged) as e:
+        return P.emit(*error_result(e))
     except P.BriefError as e:
         return P.fail(str(e))
 

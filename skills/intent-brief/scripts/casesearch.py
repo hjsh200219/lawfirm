@@ -36,6 +36,29 @@ class SearchError(Exception):
     """case-search 호출 실패(없음과 구분)."""
 
 
+class FormatChanged(SearchError):
+    """빅케이스 응답 형식이 바뀌었다 — 「빅케이스에도 없음」으로 넘기지 않는다."""
+
+
+_KEYS = P.load_response_keys()["bigcase"]
+
+
+def check_list(out, kind):
+    """빅케이스 출력 형식 검사(추가 호출 0) — ① 모든 항목이 필수 키를 못 갖춤 ② 건수 1 이상인데 목록 0. 필수 키가 정해지지 않은 명령은 끔."""
+    spec = _KEYS[kind]
+    if not spec.get("required"):
+        return
+    items = [x for x in (out.get(spec["list"]) or []) if isinstance(x, dict)]
+    if items and all(any(k not in it for k in spec["required"]) for it in items):
+        raise FormatChanged("빅케이스 %s 항목에 필수 키(%s)가 없음" % (kind, "·".join(spec["required"])))
+    try:
+        total = int(out.get(spec["count"]) or 0)
+    except (TypeError, ValueError):
+        total = 0
+    if total >= 1 and not items:
+        raise FormatChanged("빅케이스 %s 건수 %d 인데 목록(%s)이 없음" % (kind, total, spec["list"]))
+
+
 def find_script():
     return BUNDLED if os.path.isfile(BUNDLED) else None
 
@@ -121,13 +144,17 @@ class Client:
         return _run(self.uv, self.script, ["search", query, "--page", str(page)], CALL_TIMEOUT) or {"total": 0, "results": []}
 
     def find_exact(self, number, court=None):
-        """사건번호 정확 일치 1건 — 법원을 알면 case 1회, 모르면 search 1쪽 1회."""
-        want = re.sub(r"\s+", "", number)
+        """사건번호 정확 일치 1건 — 법원을 알면 case 1회, 모르면 search 1쪽 1회. 응답 형식이 바뀌면 FormatChanged."""
+        want = P.nows(number)
         if court:
-            hit = self.case(court, number)
-            return hit if hit and re.sub(r"\s+", "", hit["number"] or "") == want else None
-        for r in self.search(number).get("results") or []:
-            if re.sub(r"\s+", "", r.get("case_number") or "") == want:
+            hit = self.case(court, number)  # match_view 필수 키는 로컬 녹화로 정한 뒤 검사한다(response-keys.json case.required)
+            if hit and _KEYS["case"].get("required") and any(hit.get(k) is None for k in ("number", "court")):
+                raise FormatChanged("빅케이스 case 응답에 필수 키가 없음")
+            return hit if hit and P.nows(hit["number"]) == want else None
+        out = self.search(number)
+        check_list(out, "search")
+        for r in out.get("results") or []:
+            if P.nows(r.get("case_number")) == want:
                 m = re.search(r"(\d{4})\.\s*(\d{1,2})\.\s*(\d{1,2})\.", r.get("case_expression") or "")
                 return {"number": r.get("case_number"), "court": r.get("court"),
                         "date": "%s%02d%02d" % (m.group(1), int(m.group(2)), int(m.group(3))) if m else None,

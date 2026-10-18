@@ -14,7 +14,7 @@
 | 0.6.0 스킬(런타임은 표준 라이브러리, Python 3.9) | `skills/litigation-calc/`(`deadline.py`·`costs.py`·`dday.py`, 공휴일 `skills/litigation-calc/references/holidays.json` 2024–2028 ← `dev/holidays_kasi.py`, 2029년 자료가 나오면 다시 생성) · `skills/brainstorming-lawfirm/`(`risk.py`) · `skills/review-contract/`(`playbook.py`, 기본 플레이북 `references/`) · `skills/triage-nda/` · `skills/independent-review/`(`doc_text.py`) · `skills/site-api/`(`extract.py`·`scaffold.py`, uv 쪽 `discover.py`·`templates/client.py.tmpl`) |
 | 세션 시작 훅 | `hooks/hooks.json` → `dday.py hook`(다가오는 기한이 없으면 출력 없음 — 사건이 많아 상한에 걸리면 경고 1줄, 어떤 오류에도 exit 0) |
 | 제3자 고지 | [third_party/anthropic-legal/NOTICE.md](third_party/anthropic-legal/NOTICE.md)(review-contract·triage-nda·위험 점수표 — Apache-2.0) · 법률 문서 공통 구성안 절차 `references/outline-approval.md` |
-| 의도·채점·문구 데이터 | `skills/intent-brief/references/` — `intent-params.json`(섹션 어휘·충돌표), `intents.md`, `scoring.md`, `phrases.json`, `brief-types/` |
+| 의도·채점·문구 데이터 | `skills/intent-brief/references/` — `intent-params.json`(섹션 어휘·충돌표), `response-keys.json`(법제처·빅케이스 응답 키 — 받는 PC 형식 검사·계약 점검 공용), `intents.md`, `scoring.md`, `phrases.json`, `brief-types/` |
 | 런타임 스크립트 | `skills/intent-brief/scripts/` — 역할·의존 방향은 [ARCHITECTURE.md](ARCHITECTURE.md) |
 | 테스트 | `tests/` — 픽스처 F1(하네스 데모 사본)·F2·F3(합성), `recorded/`(녹화 응답), `e2e/`(답 파일), `case_search/`(빅케이스 오프라인 — scrapling·keyring 없으면 건너뜀) |
 | 개발 전용 도구 | `dev/` — `replay.py`(무인 재생)·`e2e.py`(E1–E8 판정)·`drf_replay.py`(e2e 용 법제처 루프백 재생 서버)·`secret_scan.py`(녹화·픽스처 비밀·개인정보 형식 검사)·`smoke.py`(받는 PC 실기 점검)·`verify_docs.py`·`holidays_kasi.py`(공휴일 표 생성, KASI 키는 환경변수) |
