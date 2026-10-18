@@ -275,9 +275,19 @@ def test_us_audit_id_before_search_or_unseen_fails():
     assert r["cluster_ids"] == ["107252"] and r["unparsed"] == ["$ID"]
 
 
-def test_us_audit_counts_direct_courtlistener_attempts():
-    ev = _tool_use("a", 'curl -s "https://www.courtlistener.com/api/rest/v4/opinions/1/"')
-    assert E.us_audit(ev)["direct"] == 1 and E.us_audit(ev)["opinions"] == 0
+def test_us_audit_counts_direct_external_attempts():
+    ev = "\n".join([_tool_use("a", 'curl -s "https://www.courtlistener.com/api/rest/v4/opinions/1/"'),
+                    _tool_use("b", 'curl -sL "https://supreme.justia.com/cases/federal/us/384/436/"'),
+                    _tool_use("c", 'curl -s "http://127.0.0.1:5555/DRF/lawSearch.do"')])
+    r = E.us_audit(ev)
+    assert r["direct"] == 2 and r["direct_hosts"] == ["supreme.justia.com", "www.courtlistener.com"] and r["opinions"] == 0
+
+
+def test_explicit_invoke_prefixes_slash_command():
+    sid = sorted(E.US_SCENARIOS)[0]
+    p = E.scenario_prompt(sid, invoke="explicit")
+    assert p.startswith("/lawfirm:case-search ") and p.endswith(E.scenario_prompt(sid))
+    assert E.scenario_prompt(sid, invoke="auto") == E.scenario_prompt(sid)
 
 
 def test_us_summary_zero_calls_is_not_zero_percent():
@@ -315,3 +325,42 @@ def test_fr27_default_unchanged(tmp_path):
     E.cmd_run(_args(tmp_path, runs=None, max_calls=None), runner=lambda out, job: calls.append(job) or True,
               precheck=lambda o: {"ok": True}, usage=lambda: 0.0)
     assert len(calls) == 36 and {j[0] for j in calls} == set(E.SCENARIOS)
+
+
+def test_invoke_goes_into_ident(tmp_path, monkeypatch):
+    seen = []
+    monkeypatch.setattr(E, "_spawn", lambda a, idt, out, job: seen.append(idt) or True)
+    for inv in ("explicit", None):
+        E.cmd_run(_args(tmp_path, suite="fr26", runs=None, max_calls=None, invoke=inv, only=["US01"]),
+                  precheck=lambda o: {"ok": True}, usage=lambda: 0.0)
+    assert [x["invoke"] for x in seen] == ["explicit", "auto"] and seen[0] != seen[1]
+
+
+def test_us_audit_reads_truncated_search_output():
+    # 모델이 `| head -60` 으로 잘라 읽으면 opinion_ids 배열의 닫는 괄호가 없다 — 본 식별자는 본 것으로 센다
+    out = '{\n "items": [\n  {\n   "cluster_id": 107841,\n   "opinion_ids": [\n    9423907,\n    9423910,\n    107841,\n'
+    ev = "\n".join([_tool_use("a", FX + ' us-search "Tinker"'), _tool_result("a", out),
+                    _tool_use("b", FX + " us-opinion 107841")])
+    r = E.us_audit(ev)
+    assert r["opinions"] == 1 and r["violations"] == [] and r["cluster_ids"] == []
+
+
+def test_fr26_runs_one_at_a_time(tmp_path, monkeypatch):
+    seen = []
+    real = E.cf.ThreadPoolExecutor
+    monkeypatch.setattr(E.cf, "ThreadPoolExecutor", lambda max_workers: seen.append(max_workers) or real(max_workers=max_workers))
+    for suite in ("fr26", "fr27"):
+        E.cmd_run(_args(tmp_path, suite=suite, runs=None, max_calls=None, jobs=None), runner=lambda out, job: True,
+                  precheck=lambda o: {"ok": True}, usage=lambda: 0.0)
+    assert seen == [1, 4]
+
+
+def test_us_audit_expands_for_loop():
+    out = '{"items": [{"cluster_id": 145730, "opinion_ids": [9435068, 145730, 9435069]}]}'
+    loop = 'S=/r/foreigncase.py; for id in 9435068 145730 777; do "$PY" "$S" us-opinion $id; done'
+    ev = "\n".join([_tool_use("a", FX + ' us-search "Twombly"'), _tool_result("a", out), _tool_use("b", loop)])
+    r = E.us_audit(ev)
+    assert r["opinions"] == 3 and r["violations"] == ["777"] and r["unparsed"] == []
+    braced = 'for oid in 9435068; do python3 /r/foreigncase.py us-opinion "${oid}"; done'
+    r = E.us_audit("\n".join([_tool_use("a", FX + ' us-search "Twombly"'), _tool_result("a", out), _tool_use("b", braced)]))
+    assert r["opinions"] == 1 and r["violations"] == []

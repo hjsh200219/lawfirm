@@ -25,6 +25,7 @@ FR-26 측정(--suite fr26)은 같은 구동기로 미국 판례 질의 12개를 
                       [--model sonnet] [--max-calls 36] [--weekly-cap 0.95]      실행 전 예상 호출 수를 찍고 상한을 넘으면 시작 안 함
   skill_eval.py run   --env ... --resume <실행 폴더>                              같은 식별값 결과는 건너뛴다
   skill_eval.py run   --suite fr26 --env claude --out <repo·홈 밖 폴더>           FR-26(스킬 있음만 · 질의당 1회 · 상한 12회)
+                      [--invoke explicit]                                       질문 앞에 /lawfirm:case-search — 자동 선택과 따로 잰다
   skill_eval.py judge --out <실행 폴더> [<실행 폴더> ...]                          기준표 판정·통과율 표(judge.json)
 """
 import argparse
@@ -83,7 +84,9 @@ US_SCENARIOS = {sid: {"skill": "case-search-us",
                                   "인용(citation)을 밝혀 주세요. 원문을 확인하지 못했으면 그렇다고 밝혀 주세요." % (name, topic)}
                 for sid, name, topic in _US}
 SUITES = {"fr27": SCENARIOS, "fr26": US_SCENARIOS}
-SUITE_DEFAULTS = {"fr27": {"arms": ARMS, "runs": 3, "max_calls": 36}, "fr26": {"arms": ("with",), "runs": 1, "max_calls": 12}}
+# fr26 은 한 번에 하나 — 익명 CourtListener 는 동시 4건에서 429(rate_limited)를 돌려줬다(2026-10-18 실측)
+SUITE_DEFAULTS = {"fr27": {"arms": ARMS, "runs": 3, "max_calls": 36, "jobs": 4},
+                  "fr26": {"arms": ("with",), "runs": 1, "max_calls": 12, "jobs": 1}}
 ALL_SCENARIOS = dict(SCENARIOS, **US_SCENARIOS)
 # 녹화(재생 서버)에 있는 사건번호 — 이 밖의 사건번호는 확인 표시(hedge)가 같은 문단에 있어야 한다
 RECORDED_CASES = {k[5] for k in drf_replay.ROUTES if k[5]}
@@ -198,8 +201,10 @@ def cs_prompt(sid):
     return SCENARIOS[sid]["question"] + ASK
 
 
-def scenario_prompt(sid):
-    return ALL_SCENARIOS[sid]["question"] + ASK
+def scenario_prompt(sid, invoke="auto"):
+    """invoke=explicit 은 스킬을 슬래시 명령으로 부른다 — 자동 선택(트리거)과 스킬 안 규칙 준수를 따로 재기 위해."""
+    p = ALL_SCENARIOS[sid]["question"] + ASK
+    return "/lawfirm:%s %s" % (ALL_SCENARIOS[sid]["skill"].replace("-us", ""), p) if invoke == "explicit" else p
 
 
 NEUTRAL_DRAFT = """민사 {brief} 초안을 쓴다. 의뢰인 쪽 변호사와 인터뷰해 정한 서면 설계(의도·쟁점별 입장·결론 방향)가 아래 design.json 에 있다 — 질문하지 말고, 사용자 확인을 기다리지 말고 초안을 끝까지 쓴다.
@@ -276,8 +281,10 @@ def audit_events(text):
 
 
 _US_OPINION = re.compile(r"\bus-opinion\s+(\S+)")
-_OPINION_IDS = re.compile(r'"opinion_ids"\s*:\s*\[([^\]]*)\]')
+_OPINION_IDS = re.compile(r'"opinion_ids"\s*:\s*\[([^\]]*)')  # 닫는 괄호가 잘린 출력(head)도 읽는다
 _CLUSTER_ID = re.compile(r'"cluster_id"\s*:\s*(\d+)')
+_FOR = re.compile(r"\bfor\s+(\w+)\s+in\s+([^;]+?)\s*;\s*do\b")
+_HOST = re.compile(r"https?://([^/\s\"'\\]+)")
 
 
 def _blocks(text):
@@ -299,22 +306,35 @@ def _result_text(b):
     return c or ""
 
 
+def _opinion_args(cmd):
+    """`us-opinion` 인자 — `for id in 1 2; do … us-opinion $id` 처럼 단순 반복문의 변수는 목록으로 펼친다."""
+    loops = {v: items.split() for v, items in _FOR.findall(cmd)}
+    out = []
+    for arg in _US_OPINION.findall(cmd):
+        arg = arg.strip("\"'\\;")
+        var = re.fullmatch(r"\$\{?(\w+)\}?", arg)
+        out += loops[var.group(1)] if var and var.group(1) in loops else [arg]
+    return out
+
+
 def us_audit(text):
     """FR-26 — Claude 실행 기록을 순서대로 읽어 `us-opinion` 식별자가 그때까지의 `us-search` 결과에 있었는지 본다."""
     seen, clusters, searches = set(), set(), set()
     r = {"searches": 0, "opinions": 0, "violations": [], "cluster_ids": [], "unparsed": [], "no_key": 0, "direct": 0}
+    hosts = set()
     for b in _blocks(text):
         if b.get("type") == "tool_use":
             inp = b.get("input")
             cmd = inp.get("command") if isinstance(inp, dict) and isinstance(inp.get("command"), str) else json.dumps(inp, ensure_ascii=False)
-            r["direct"] += cmd.count("courtlistener.com")
+            ext = [h for h in _HOST.findall(cmd) if not h.startswith(("127.0.0.1", "localhost"))]
+            r["direct"] += len(ext)  # 스킬을 거치지 않은 외부 주소 시도(차단 훅이 막는다)
+            hosts.update(ext)
             if "foreigncase" not in cmd:
                 continue
             if "us-search" in cmd:
                 r["searches"] += 1
                 searches.add(b.get("id"))
-            for oid in _US_OPINION.findall(cmd):
-                oid = oid.strip("\"'\\")
+            for oid in _opinion_args(cmd):
                 r["opinions"] += 1
                 if not oid.isdigit():
                     r["unparsed"].append(oid)
@@ -327,8 +347,9 @@ def us_audit(text):
             r["no_key"] += out.count('"no_key"')
             if b.get("tool_use_id") in searches:
                 for group in _OPINION_IDS.findall(out):
-                    seen.update(x.strip() for x in group.split(",") if x.strip())
+                    seen.update(re.findall(r"\d+", group))
                 clusters.update(_CLUSTER_ID.findall(out))
+    r["direct_hosts"] = sorted(hosts)
     return r
 
 
@@ -415,7 +436,8 @@ def run_codex(run_dir, arm, prompt, ev):
 def run_one(env_name, run_dir, sid, arm, model, ident):
     os.makedirs(run_dir)
     sc = ALL_SCENARIOS[sid]
-    rep = {"env": env_name, "scenario": sid, "arm": arm, "ident": ident, "started": time.strftime("%Y-%m-%dT%H:%M:%S%z")}
+    invoke = ident.get("invoke", "auto")
+    rep = {"env": env_name, "scenario": sid, "arm": arm, "ident": ident, "invoke": invoke, "started": time.strftime("%Y-%m-%dT%H:%M:%S%z")}
     srv = drf_replay.Server().start()
     t0 = time.time()
     try:
@@ -435,7 +457,7 @@ def run_one(env_name, run_dir, sid, arm, model, ident):
             prompt = ib_prompt(arm, brief=brief, design=design, case=case_dir, draft=draft, wd=wd, lawenv=lawenv)
             rep.update(case_dir=case_dir, design=design, draft=draft)
         else:
-            prompt = scenario_prompt(sid)
+            prompt = scenario_prompt(sid, invoke)
         open(os.path.join(run_dir, "prompt.txt"), "w", encoding="utf-8").write(prompt)
         av = agent_vars(arm, ev)
         rep.update(run_claude(run_dir, arm, prompt, av, model) if env_name == "claude" else run_codex(run_dir, arm, prompt, av))
@@ -490,6 +512,7 @@ def cmd_run(a, runner=None, precheck=None, usage=None):
     usage = usage or edb_weekly
     idt = e2e.ident(a.model if a.env == "claude" else "codex-default")
     idt["env"] = a.env
+    idt["invoke"] = getattr(a, "invoke", None) or "auto"  # 식별값에 넣어 자동 선택 회차와 섞지 않는다
     runner = runner or (lambda out, job: _spawn(a, idt, out, job))
     out = os.path.abspath(a.resume) if a.resume else os.path.join(os.path.abspath(a.out), "%s-%s" % (a.env, time.strftime("%Y%m%d-%H%M%S")))
     jobs = [(s, arm, i) for s in (a.only or sorted(SUITES[suite])) for arm in (a.arms or d["arms"]) for i in range(1, runs + 1)]
@@ -523,7 +546,7 @@ def cmd_run(a, runner=None, precheck=None, usage=None):
     if not pre.get("ok"):
         print("사전 시험 실패 — 모델 호출을 보내지 않는다", file=sys.stderr)
         return 3
-    with cf.ThreadPoolExecutor(max_workers=a.jobs) as ex:
+    with cf.ThreadPoolExecutor(max_workers=getattr(a, "jobs", None) or d["jobs"]) as ex:
         for job, ok in zip(todo, ex.map(lambda j: runner(out, j), todo)):
             print("%s %s" % (_name(job), "ok" if ok else "FAIL"), flush=True)
     return 0
@@ -601,7 +624,8 @@ def main():
     g = s.add_mutually_exclusive_group(required=True)
     g.add_argument("--out"); g.add_argument("--resume")
     s.add_argument("--suite", choices=sorted(SUITES), default="fr27")
-    s.add_argument("--runs", type=int); s.add_argument("--jobs", type=int, default=4)  # 기본값은 SUITE_DEFAULTS
+    s.add_argument("--invoke", choices=("auto", "explicit"), default="auto")
+    s.add_argument("--runs", type=int); s.add_argument("--jobs", type=int)  # 기본값은 SUITE_DEFAULTS
     s.add_argument("--only", nargs="*", choices=sorted(ALL_SCENARIOS)); s.add_argument("--arms", nargs="*", choices=ARMS)
     s.add_argument("--model", default="sonnet"); s.add_argument("--max-calls", type=int)
     s.add_argument("--weekly-cap", type=float, default=0.95)
