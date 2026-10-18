@@ -84,7 +84,7 @@ allowed-tools: Bash(uv run:*), Bash(python3:*), Bash(python:*), Bash(py:*)
 | `FX us-search <검색어> [--court C] [--after D] [--before D] [--cursor C]` | 미국 판례 검색(익명) — 판례명·법원·선고일·인용·opinion id·URL, 다음 페이지는 `next_cursor` |
 | `FX us-opinion <opinion_id> [--offset N]` | 미국 판결문 본문(영어) — CourtListener 토큰 필요 |
 
-미국 판례 인용 규칙: `us-opinion` 은 같은 대화의 `us-search` 결과에 나온 `opinion_id` 로만 부른다 — 기억·추측한 식별자로 부르지 않고, 판례명·인용도 검색 결과에 나온 것만 쓴다.
+미국 판례 인용 규칙: `us-opinion` 은 같은 대화의 `us-search` 결과에 나온 `opinion_id` 로만 부른다 — 기억·추측한 식별자로 부르지 않고, 판례명·인용도 검색 결과에 나온 것만 쓴다. 본문을 받지 못하면(`no_key` 등) 판결문 문장을 기억으로 인용하지 않는다 — 「대조 못 함」 표시를 붙여도 마찬가지다. 검색 결과에 나온 판례명·인용·URL·발췌(snippet)만 출처와 함께 쓰고, 그 문장이 필요하면 토큰 등록(`/lawfirm:law-key-setup us`) 뒤 `us-opinion` 으로 받아 인용한다고 알린다.
 | `FX de-search <검색어> [--court BGH] [--level Bundesgericht] [--page N]` | 독일 판례 본문 검색(익명) — 법원·선고일·결정 종류·발췌·URL |
 | `FX de-case <id> [--offset N]` | 독일 판결문 본문(독일어) — 사건번호·ECLI 포함 |
 | `FX key status` · `FX key set us --prompt` · `FX key clear us` | CourtListener 토큰 상태 · 입력 창으로 저장 · 삭제 |

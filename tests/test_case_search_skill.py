@@ -92,6 +92,8 @@ def test_foreign_commands_documented():
 
 
 def test_us_citation_rule_line():
-    """FR-26 — 미국 판례 본문은 검색 결과의 식별자로만(측정은 D-02 승인 범위 밖이라 미실행)."""
+    """FR-26 — 미국 판례 본문은 검색 결과의 식별자로만(측정 결과 docs/QUALITY.md). 본문을 못 받으면 판결문 문장을
+    기억으로 인용하지 않는다 — 트리거 보강 뒤 자동 선택 회차에서 12번 중 8번이 「대조 못 함」 표시만 붙이고 기억 인용을 실었다."""
     t = open(os.path.join(ROOT, "skills", "case-search", "SKILL.md"), encoding="utf-8").read()
     assert "`us-opinion` 은 같은 대화의 `us-search` 결과에 나온 `opinion_id` 로만 부른다" in t
+    assert "판결문 문장을 기억으로 인용하지 않는다" in t and "「대조 못 함」 표시를 붙여도 마찬가지다" in t
