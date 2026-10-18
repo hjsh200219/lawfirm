@@ -57,3 +57,4 @@ e2e 판정 기준값(E3 강한 표현 수, E6 길이비 1.3 등)은 `dev/e2e.py`
 
 | 날짜 | 판 | Health Stack | 법제처 점검 exit | 빅케이스 점검 exit | 비고 |
 |---|---|---|---|---|---|
+| 2026-10-18 | 0.8.0 | 5줄 통과(전체 521·3.9 521 passed, 빅케이스 66 passed, validate 통과, verify_docs 오류 0) | 0 | 0 | 법제처 12요청 차이 0 · 빅케이스 녹화 HTTP 7·점검 HTTP 6 · 같은 날 응답 키 목록 확정(response-keys.json) |
