@@ -128,6 +128,7 @@ codex plugin add lawfirm@lawfirm
 - 인터뷰 상태·중간 초안·인용 응답·사건메모 사본: 작업 폴더 — macOS `~/.intent-brief/`, Windows `%LOCALAPPDATA%\intent-brief\`. 의뢰인 정보가 들어 있으니 끝난 사건은 지우십시오:
   `python <플러그인>/skills/intent-brief/scripts/state.py purge <사건폴더>` (전부: `--all`). 플러그인을 지워도 이 폴더는 남습니다.
 - 사건 폴더에 `사건메모.md`(업무관리 하네스 형식)가 있으면 진행 경과·할 일을 diff 확인 후 기록합니다. 없으면 기록하지 않습니다.
+- 사용 통계: 작업 폴더의 상태 파일에서만 셉니다 — `python <플러그인>/skills/intent-brief/scripts/intent.py stats` 가 허용 필드 7개(사건 수·의도×측·덮어쓴 칸·평균 질문 라운드·빠른 경로 비율·플러그인 판·집계 기간) 요약과 복사용 블록을 냅니다. 사건 폴더 이름·자유 입력은 넣지 않고(목록 밖 값은 other), 플러그인은 이 통계를 네트워크로 보내지 않습니다.
 - 빅케이스: 이메일 `~/.case-search/bigcase/config.json` · 비밀번호 OS 키체인(서비스 `case-search-bigcase`) · 토큰 `~/.case-search/bigcase/session.json`(두 파일 모두 macOS·Linux 는 이 PC 사용자만 읽게 권한 0600). 환경변수 `BIGCASE_ID`/`BIGCASE_PW` 가 있으면 키체인보다 우선하고, `CASE_SEARCH_HOME` 으로 보관 폴더를 바꿉니다. 지우기: `uv run <플러그인>/skills/case-search/scripts/bigcase.py forget`.
 - 계약 검토 플레이북: 작업 폴더의 playbooks 폴더(playbook-contract.md·playbook-nda.md — 만들기 전에는 번들 기본값을 씀. 의뢰인별 기준은 `playbooks/<의뢰인>/`, `--profile <의뢰인>`). 기한 점검 등록 폴더 목록: 작업 폴더의 dday.json. `site-api` 가 만든 클라이언트·세션: 작업 폴더 `site-api/`(자격증명은 키체인 `site-api-<이름>`).
 - 해외 판례 토큰: `~/.case-search/foreign.json`(macOS·Linux 는 이 PC 사용자만 읽게 권한 0600). 환경변수 `COURTLISTENER_API_TOKEN` 이 있으면 먼저 씁니다. 지우기: `python <플러그인>/skills/case-search/scripts/foreigncase.py key clear us`.

@@ -5,10 +5,11 @@
 
 사용:
   intent.py resolve <state.json> [--write]   설계안 계산(--write 면 작업 폴더에 design.json 고정)
-  intent.py stats [<작업 폴더 루트>]          의도·덮어쓰기 빈도
+  intent.py stats [<작업 폴더 루트>]          의도·덮어쓰기 빈도(허용 필드 7개) + 복사용 블록 — 네트워크 없음
 """
 import argparse
 import collections
+import json
 import os
 import sys
 
@@ -303,25 +304,53 @@ def write_design(state_path, st, design):
     return path
 
 
+# 덮어쓰기 분기가 받는 칸 이름 — 통계 키 성분은 이 목록 안만(목록 밖은 other)
+OVERRIDE_CELLS = ("strength", "tone", "length", "evidence_strategy", "sections.add", "sections.remove", "addenda", "todo", "conclusion")
+STATS_FIELDS = ("cases", "intent_side", "override_cells", "avg_rounds", "fast_path_ratio", "plugin_version", "period")
+
+
+def _plugin_version():
+    try:
+        return P.load_json(os.path.join(P.PLUGIN_ROOT, ".claude-plugin", "plugin.json")).get("version")
+    except (OSError, ValueError):
+        return None
+
+
 def stats(root):
+    """사용 통계 요약 — 허용 필드 7개만. 키 성분은 닫힌 어휘(의도 ID·측·덮어쓰기 칸), 목록 밖 값은 other.
+    사건 폴더 이름·자유 텍스트는 내지 않는다. 네트워크를 쓰지 않는다(이 PC 에만)."""
+    params = P.load_params()
+    intents, sides = set(params["intents"]), set(params["sides"])
+    pick = lambda v, allowed: v if v in allowed else "other"  # noqa: E731
     root = root or os.path.join(P.work_root(), "cases")
     cnt = collections.Counter()
     ovc = collections.Counter()
-    rounds, n, fast = [], 0, 0
+    rounds, n, fast, days = [], 0, 0, []
     for case in (os.listdir(root) if os.path.isdir(root) else []):
         d = os.path.join(root, case)
+        if not os.path.isdir(d):
+            continue
         for f in os.listdir(d):
             if f.endswith("_state.json"):
                 st = P.load_json(os.path.join(d, f))
                 n += 1
-                prim = st["intent"].get("primary")
-                cnt["%s|%s" % (prim, st.get("side"))] += 1
+                prim = pick((st.get("intent") or {}).get("primary"), intents)
+                side = pick(st.get("side"), sides)
+                cnt["%s|%s" % (prim, side)] += 1
                 for o in st.get("overrides", []):
-                    ovc["%s|%s|%s" % (prim, st.get("side"), o["cell"])] += 1
-                rounds.append(len(st["rounds"]))
-                fast += 1 if st["intent"].get("fast_path") else 0
+                    ovc["%s|%s|%s" % (prim, side, pick(o.get("cell"), OVERRIDE_CELLS))] += 1
+                rounds.append(len(st.get("rounds") or []))
+                fast += 1 if (st.get("intent") or {}).get("fast_path") else 0
+                days += [str(st[k])[:10] for k in ("created", "updated") if st.get(k)]
     return {"cases": n, "intent_side": dict(cnt), "override_cells": dict(ovc),
-            "avg_rounds": round(sum(rounds) / len(rounds), 2) if rounds else None, "fast_path_ratio": round(fast / n, 2) if n else None}
+            "avg_rounds": round(sum(rounds) / len(rounds), 2) if rounds else None, "fast_path_ratio": round(fast / n, 2) if n else None,
+            "plugin_version": _plugin_version(), "period": {"from": min(days), "to": max(days)} if days else None}
+
+
+def share_block(summary):
+    """복사용 블록 — 허용 필드만 다시 골라 담는다. 보내는 곳·방법은 아직 정하지 않았다(D-06)."""
+    data = {k: summary.get(k) for k in STATS_FIELDS}
+    return "```\nlawfirm 사용 통계\n%s\n```" % json.dumps(data, ensure_ascii=False, sort_keys=True, indent=1)
 
 
 def main(argv=None):
@@ -347,7 +376,8 @@ def main(argv=None):
                 out["design_path"] = path
             return P.emit(out)
         if a.cmd == "stats":
-            return P.emit(dict(ok=True, **stats(a.root)))
+            summary = stats(a.root)
+            return P.emit({"ok": True, "summary": summary, "share_block": share_block(summary)})
     except NeedInput as e:
         return P.emit({"ok": False, "needs": e.needs}, 3)
     except P.BriefError as e:
