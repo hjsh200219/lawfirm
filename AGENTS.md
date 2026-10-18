@@ -50,7 +50,7 @@ python3 dev/verify_docs.py                                                      
 - 테스트는 실제 빅케이스를 부르지 않는다(`tests/conftest.py` 가 `INTENT_BRIEF_NO_CASESEARCH=1`, `tests/case_search/` 는 가짜 HTTP). 빅케이스는 이용 범위상 사람 빈도로만 부르고, 대량 수집·재배포는 하지 않는다. 실계정 자료(토큰·비밀번호·조회한 판결의 실명)는 커밋하지 않는다.
 - `dev/replay.py`·`dev/e2e.py` 는 `claude -p` 를 여러 번 부른다(비용 발생 — `run` 이 예상 호출 수를 먼저 찍고 `--max-claude` 를 넘으면 시작하지 않는다). 법제처는 루프백 재생 서버, 빅케이스는 끔으로만 돌고(실서비스 0회), 첫 `claude -p` 전에 모델 없는 사전 시험을 통과해야 한다. 실행마다 새 폴더 · 식별값이 다른 결과는 재사용·판정하지 않는다. 판정 기준은 `dev/e2e.py` 의 `judge_run`. 선택 환경변수: `INTENT_BRIEF_TOKEN_FILE`(무인 실행 토큰 파일), `JEV_DIR`(블라인드 판별용 Jev 클라이언트), `INTENT_BRIEF_DEMO_DIR`(casedb 계약 테스트의 데모 원본).
 - 공개 repo 다. 픽스처의 인명·사건번호는 가명이며 실제 의뢰인 자료를 넣지 않는다.
-- 이 Mac 에서 `main` 커밋은 곧 공개 게시다 — post-commit 훅이 자동 push 하고 Claude·Codex 설치본을 갱신한다([R-push] 예외 열다섯, 끄기 `LAWFIRM_AUTOPUSH=0`, 로그 `~/Library/Logs/lawfirm-autopush.log`). 올리면 안 되는 작업은 다른 브랜치에 둔다. 설치한 사람에게 퍼뜨릴 변경은 버전을 올린다(같은 버전이면 업데이트되지 않는다).
+- 이 Mac 에서 `main` 커밋은 곧 공개 게시다 — post-commit 훅이 자동 push 하고 Claude·Codex 설치본을 갱신한다([R-push] 예외 열다섯, 끄기 `LAWFIRM_AUTOPUSH=0`, 로그 `~/Library/Logs/lawfirm-autopush.log`). 검증(Health Stack)을 마친 작업은 push 지시를 기다리지 않고 main 에 올린다(2026-10-18 사용자 재확인) — 브랜치 작업은 `git merge --ff-only` 뒤 `SH_GIT_PUSH=1` 정확한 SHA push 와 설치본 갱신까지(ff 병합은 훅을 부르지 않는다). 다른 브랜치에 두는 것은 검증 실패·사용자 결정·과금 승인 대기뿐이다. 설치한 사람에게 퍼뜨릴 변경은 버전을 올린다(같은 버전이면 업데이트되지 않는다).
 - 의도 목록·기본값 개정은 사용 통계(`intent.py stats`)를 근거로 한다.
 - 모델이 처음부터 만든 새 스킬(`skills/<이름>/SKILL.md` 를 추가하는 커밋 — 사람 지시로 기존 SKILL.md 를 고친 것은 제외)은 변호사 검토 기록과 그 스킬의 짝지은 평가(스킬 있음·없음) 결과를 커밋 본문에 1줄 이상 적은 뒤에만 `main` 에 커밋한다.
 - 내장 스킬에 MCP·Cowork 경로·AskUserQuestion 을 다시 넣지 않는다(`tests/test_embedded_skills.py` 가 막는다). lyn-lawfirm 원본과는 자동 동기화하지 않는다.
