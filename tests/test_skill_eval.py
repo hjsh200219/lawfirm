@@ -1,4 +1,5 @@
 """FR-27 짝지은 평가 구동기(dev/skill_eval.py) — 명령 조립·격리·기준표·호출 상한(과금 0, 모델 호출 없음)."""
+import json
 import os
 import sys
 import types
@@ -231,3 +232,86 @@ def test_amount_notation(t, man, ok):
 def test_ib_rubric_accepts_won_notation():
     t = "x" * 600 + "\n\n피고의 주장은 사실이 아닙니다. 원고의 청구를 전부 인용하여 피고는 원고에게 50,000,000원을 지급하라."
     assert E.ib_rubric("IB1", t, set())["R2"]
+
+
+# ── FR-26 미국 판례 식별자 측정(스킬 있음만, 질의 10개 이상) ──
+def _tool_use(tid, cmd):
+    return json.dumps({"type": "assistant", "message": {"content": [
+        {"type": "tool_use", "id": tid, "name": "Bash", "input": {"command": cmd}}]}})
+
+
+def _tool_result(tid, text):
+    return json.dumps({"type": "user", "message": {"content": [
+        {"type": "tool_result", "tool_use_id": tid, "content": [{"type": "text", "text": text}]}]}})
+
+
+FX = "python3 /r/skills/case-search/scripts/foreigncase.py"
+SEARCH_OUT = json.dumps({"source": "CourtListener", "items": [
+    {"case_name": "Miranda v. Arizona", "cluster_id": 107252, "opinion_ids": [107252001, 9411]}]})
+
+
+def test_us_suite_separate_from_fr27():
+    assert len(E.US_SCENARIOS) >= 10 and not set(E.US_SCENARIOS) & set(E.SCENARIOS)
+    assert E.SUITES["fr27"] is E.SCENARIOS and E.SUITES["fr26"] is E.US_SCENARIOS
+    for sid in E.US_SCENARIOS:
+        p = E.scenario_prompt(sid)
+        assert "원문" in p and "foreigncase" not in p and "opinion_id" not in p
+
+
+def test_us_audit_id_after_search_passes():
+    ev = "\n".join([_tool_use("a", FX + ' us-search "Miranda v. Arizona" --court scotus'), _tool_result("a", SEARCH_OUT),
+                    _tool_use("b", FX + " us-opinion 9411"), _tool_result("b", '{"ok": false, "error": "no_key"}')])
+    r = E.us_audit(ev)
+    assert r["searches"] == 1 and r["opinions"] == 1 and r["violations"] == [] and r["no_key"] == 1
+
+
+def test_us_audit_id_before_search_or_unseen_fails():
+    ev = "\n".join([_tool_use("a", FX + " us-opinion 9411"), _tool_result("a", "{}"),
+                    _tool_use("b", FX + ' us-search "Miranda"'), _tool_result("b", SEARCH_OUT),
+                    _tool_use("c", FX + " us-opinion 107252"), _tool_result("c", "{}"),
+                    _tool_use("d", FX + " us-opinion $ID"), _tool_result("d", "{}")])
+    r = E.us_audit(ev)
+    assert r["opinions"] == 3 and r["violations"] == ["9411", "107252", "$ID"]
+    assert r["cluster_ids"] == ["107252"] and r["unparsed"] == ["$ID"]
+
+
+def test_us_audit_counts_direct_courtlistener_attempts():
+    ev = _tool_use("a", 'curl -s "https://www.courtlistener.com/api/rest/v4/opinions/1/"')
+    assert E.us_audit(ev)["direct"] == 1 and E.us_audit(ev)["opinions"] == 0
+
+
+def test_us_summary_zero_calls_is_not_zero_percent():
+    assert E.us_summary([{"opinions": 0, "violations": []}])["ratio"] is None
+    s = E.us_summary([{"opinions": 3, "violations": ["1"]}, {"opinions": 1, "violations": []}])
+    assert s == {"opinions": 4, "violations": 1, "ratio": 0.25}
+
+
+@pytest.mark.parametrize("cmd", [FX + " key set us --prompt", FX + " key clear us", "/lawfirm:law-key-setup us"])
+def test_guard_blocks_key_prompt(cmd):
+    assert E.guard_blocked({"tool_name": "Bash", "tool_input": {"command": cmd}})
+
+
+def test_guard_allows_foreign_search():
+    assert not E.guard_blocked({"tool_name": "Bash", "tool_input": {"command": FX + ' us-search "Miranda v. Arizona"'}})
+
+
+def test_claude_env_drops_inherited_foreign_tokens(tmp_path):
+    tok = tmp_path / "tok"
+    tok.write_text("t")
+    env = E.claude_env(str(tmp_path / "run"), {}, {"COURTLISTENER_API_TOKEN": "x", "OPENLEGALDATA_API_TOKEN": "y"}, str(tok))
+    assert "COURTLISTENER_API_TOKEN" not in env and "OPENLEGALDATA_API_TOKEN" not in env
+
+
+def test_fr26_defaults_with_arm_one_run(tmp_path, capsys):
+    calls = []
+    rc = E.cmd_run(_args(tmp_path, suite="fr26", runs=None, max_calls=None), runner=lambda out, job: calls.append(job) or True,
+                   precheck=lambda o: {"ok": True}, usage=lambda: 0.0)
+    assert rc == 0 and len(calls) == len(E.US_SCENARIOS) and {j[1] for j in calls} == {"with"} and {j[2] for j in calls} == {1}
+    assert "claude -p %d회" % len(E.US_SCENARIOS) in capsys.readouterr().out
+
+
+def test_fr27_default_unchanged(tmp_path):
+    calls = []
+    E.cmd_run(_args(tmp_path, runs=None, max_calls=None), runner=lambda out, job: calls.append(job) or True,
+              precheck=lambda o: {"ok": True}, usage=lambda: 0.0)
+    assert len(calls) == 36 and {j[0] for j in calls} == set(E.SCENARIOS)

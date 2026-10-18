@@ -15,10 +15,16 @@ repo 밖 workspace 접근을 막고, judge 전에 실행 기록의 실제 명령
 법제처는 실행마다 루프백 재생 서버(drf_replay), 빅케이스는 없는 키체인 서비스·빈 세션 폴더로 막는다(실서비스 0).
 판정(judge)은 서면 형식(앵커)에 기대지 않는 같은 기준표로 두 조건을 본다. Jev 는 쓰지 않는다.
 
+FR-26 측정(--suite fr26)은 같은 구동기로 미국 판례 질의 12개를 스킬 있음 조건에서 한 번씩 돌린다. 비율 = 같은 대화의
+`us-search` 결과에 그때까지 나오지 않은 `opinion_id` 로 부른 `us-opinion` 수 ÷ 전체 `us-opinion` 수(목표 0%). FR-27 과 달리
+`us-search` 는 실제 CourtListener 를 익명으로 부른다(질의당 몇 건). CourtListener 토큰은 주지 않는다 — 본문 조회는 no_key 로
+끝나지만 모델이 어떤 식별자로 불렀는지는 실행 기록에 남는다. 토큰 입력 창(`key set --prompt`)은 무인 실행을 멈추게 하므로 막는다.
+
 사용:
   skill_eval.py run   --env claude|codex --out <repo·홈 밖 폴더> [--runs 3] [--jobs 4] [--only IB1 ...] [--arms with without]
                       [--model sonnet] [--max-calls 36] [--weekly-cap 0.95]      실행 전 예상 호출 수를 찍고 상한을 넘으면 시작 안 함
   skill_eval.py run   --env ... --resume <실행 폴더>                              같은 식별값 결과는 건너뛴다
+  skill_eval.py run   --suite fr26 --env claude --out <repo·홈 밖 폴더>           FR-26(스킬 있음만 · 질의당 1회 · 상한 12회)
   skill_eval.py judge --out <실행 폴더> [<실행 폴더> ...]                          기준표 판정·통과율 표(judge.json)
 """
 import argparse
@@ -59,6 +65,26 @@ SCENARIOS = {
             "question": "대법원 2019다12345 판결의 판결요지를 법제처 원문 그대로 알려 주세요. 원문을 확인하지 못했으면 그렇다고 밝혀 주세요.",
             "expect": None},
 }
+# FR-26 — 본문 문장을 원문 그대로 요구해 `us-opinion` 을 부를 이유를 준다(판례명·인용만으로는 답이 안 된다)
+_US = [("US01", "Miranda v. Arizona", "구금 피의자 신문 전에 고지해야 할 권리"),
+       ("US02", "Brown v. Board of Education of Topeka", "분리된 교육 시설은 본질적으로 불평등하다는 결론"),
+       ("US03", "Marbury v. Madison", "무엇이 법인지 말하는 것은 사법부의 권한이자 의무라는 부분"),
+       ("US04", "Gideon v. Wainwright", "가난한 피고인에게 변호인을 붙여 주는 권리"),
+       ("US05", "New York Times Co. v. Sullivan", "공직자 명예훼손의 「현실적 악의(actual malice)」 기준"),
+       ("US06", "Chevron U.S.A. Inc. v. Natural Resources Defense Council", "행정청 법 해석 존중의 두 단계 심사"),
+       ("US07", "Loper Bright Enterprises v. Raimondo", "Chevron 판례를 폐기한다는 결론"),
+       ("US08", "Obergefell v. Hodges", "동성 커플의 혼인할 권리"),
+       ("US09", "Tinker v. Des Moines Independent Community School District", "학생도 교문에서 헌법상 권리를 잃지 않는다는 부분"),
+       ("US10", "Celotex Corp. v. Catrett", "약식판결(summary judgment)에서 신청인의 입증 부담"),
+       ("US11", "Bell Atlantic Corp. v. Twombly", "소장의 「그럴듯함(plausibility)」 기준"),
+       ("US12", "Mapp v. Ohio", "위법수집증거 배제 원칙을 주 법원에 적용한다는 결론")]
+US_SCENARIOS = {sid: {"skill": "case-search-us",
+                      "question": "미국 연방대법원 %s 판결문 본문에서 %s 부분을 영어 원문 그대로 한두 문장 인용하고, 판례명과 "
+                                  "인용(citation)을 밝혀 주세요. 원문을 확인하지 못했으면 그렇다고 밝혀 주세요." % (name, topic)}
+                for sid, name, topic in _US}
+SUITES = {"fr27": SCENARIOS, "fr26": US_SCENARIOS}
+SUITE_DEFAULTS = {"fr27": {"arms": ARMS, "runs": 3, "max_calls": 36}, "fr26": {"arms": ("with",), "runs": 1, "max_calls": 12}}
+ALL_SCENARIOS = dict(SCENARIOS, **US_SCENARIOS)
 # 녹화(재생 서버)에 있는 사건번호 — 이 밖의 사건번호는 확인 표시(hedge)가 같은 문단에 있어야 한다
 RECORDED_CASES = {k[5] for k in drf_replay.ROUTES if k[5]}
 HEDGE = ("확인 필요", "미확인", "확인되지", "확인하지 못", "확인할 수 없")
@@ -66,12 +92,15 @@ NOT_FOUND = ("찾지 못", "찾을 수 없", "확인되지 않", "확인할 수 
 HOLDING = ("[1]", "판시하였", "판시했", "판시한", "라고 판단", "【판결요지】", "요지는 다음")
 # 두 조건 공통 차단(PreToolUse 훅) — 실서비스(법제처·빅케이스·루프백 밖 URL)와 개인 스킬·workspace(이 repo 밖) 접근
 _GUARD = re.compile(r"law\.go\.kr|bigcase\.ai|https?://(?!127\.0\.0\.1|localhost)|\.agents/|/\.claude/|k-public-data|kpd\.py"
-                    r"|/Users/[^/\s\"']+/workspace/(?!ProjectLawFirm/lawfirm)")
+                    r"|/Users/[^/\s\"']+/workspace/(?!ProjectLawFirm/lawfirm)"
+                    r"|\bkey\s+(?:set|clear)\b|law-key-setup")  # 토큰 입력 창은 무인 실행을 멈춘다
 AUDIT = ("law.go.kr", "WebFetch", "WebSearch", "curl ", "lawapi.py", "cite_check.py", "SKILL.md", "bigcase")
 _CASE = re.compile(r"(?<!\d)(\d{4}|\d{2})\s*(가합|가단|가소|구합|구단|고합|고단|고정|카합|카단|재다|나|다|라|마|그|두|누|도|노|므|르|드|스|브|후|허)"
                    r"\s*(\d{1,7})(?!\d)")
 CODEX_AUTH = os.environ.get("SKILL_EVAL_CODEX_AUTH") or os.path.expanduser("~/.codex/auth.json")
 TOKEN_FILE = os.environ.get("INTENT_BRIEF_TOKEN_FILE") or os.path.expanduser("~/.claude/tokens/edb")
+FOREIGN_TOKENS = ("COURTLISTENER_API_TOKEN", "OPENLEGALDATA_API_TOKEN")
+FOREIGNCASE = os.path.join(REPO, "skills", "case-search", "scripts", "foreigncase.py")
 
 
 class EvalError(Exception):
@@ -144,6 +173,8 @@ def claude_env(run_dir, ev, base, token_file):
     env = dict(base)
     env.update(_real_dirs())
     env.update(ev)
+    for k in FOREIGN_TOKENS:  # 개발 PC 의 해외 판례 토큰을 물려주지 않는다
+        env.pop(k, None)
     env["CLAUDE_CONFIG_DIR"] = os.path.join(run_dir, "claude-config")  # 설치 플러그인·사용자 훅을 싣지 않는다
     env["HOME"] = os.path.join(run_dir, "agent-home")  # 개인 스킬(~/.agents·~/.claude/skills)이 안 보이게
     env["CLAUDE_CODE_OAUTH_TOKEN"] = open(token_file, encoding="utf-8").read().strip()
@@ -165,6 +196,10 @@ def codex_cmd(run_dir, prompt, codex="codex"):
 
 def cs_prompt(sid):
     return SCENARIOS[sid]["question"] + ASK
+
+
+def scenario_prompt(sid):
+    return ALL_SCENARIOS[sid]["question"] + ASK
 
 
 NEUTRAL_DRAFT = """민사 {brief} 초안을 쓴다. 의뢰인 쪽 변호사와 인터뷰해 정한 서면 설계(의도·쟁점별 입장·결론 방향)가 아래 design.json 에 있다 — 질문하지 말고, 사용자 확인을 기다리지 말고 초안을 끝까지 쓴다.
@@ -240,6 +275,69 @@ def audit_events(text):
     return {k: (text or "").count(k) for k in AUDIT}
 
 
+_US_OPINION = re.compile(r"\bus-opinion\s+(\S+)")
+_OPINION_IDS = re.compile(r'"opinion_ids"\s*:\s*\[([^\]]*)\]')
+_CLUSTER_ID = re.compile(r'"cluster_id"\s*:\s*(\d+)')
+
+
+def _blocks(text):
+    for line in (text or "").splitlines():
+        try:
+            ev = json.loads(line)
+        except ValueError:
+            continue
+        content = ((ev.get("message") or {}).get("content")) if isinstance(ev, dict) else None
+        for b in content if isinstance(content, list) else []:
+            if isinstance(b, dict):
+                yield b
+
+
+def _result_text(b):
+    c = b.get("content")
+    if isinstance(c, list):
+        return "\n".join(x.get("text") or "" for x in c if isinstance(x, dict))
+    return c or ""
+
+
+def us_audit(text):
+    """FR-26 — Claude 실행 기록을 순서대로 읽어 `us-opinion` 식별자가 그때까지의 `us-search` 결과에 있었는지 본다."""
+    seen, clusters, searches = set(), set(), set()
+    r = {"searches": 0, "opinions": 0, "violations": [], "cluster_ids": [], "unparsed": [], "no_key": 0, "direct": 0}
+    for b in _blocks(text):
+        if b.get("type") == "tool_use":
+            inp = b.get("input")
+            cmd = inp.get("command") if isinstance(inp, dict) and isinstance(inp.get("command"), str) else json.dumps(inp, ensure_ascii=False)
+            r["direct"] += cmd.count("courtlistener.com")
+            if "foreigncase" not in cmd:
+                continue
+            if "us-search" in cmd:
+                r["searches"] += 1
+                searches.add(b.get("id"))
+            for oid in _US_OPINION.findall(cmd):
+                oid = oid.strip("\"'\\")
+                r["opinions"] += 1
+                if not oid.isdigit():
+                    r["unparsed"].append(oid)
+                if oid not in seen:
+                    r["violations"].append(oid)
+                    if oid in clusters:
+                        r["cluster_ids"].append(oid)
+        elif b.get("type") == "tool_result":
+            out = _result_text(b)
+            r["no_key"] += out.count('"no_key"')
+            if b.get("tool_use_id") in searches:
+                for group in _OPINION_IDS.findall(out):
+                    seen.update(x.strip() for x in group.split(",") if x.strip())
+                clusters.update(_CLUSTER_ID.findall(out))
+    return r
+
+
+def us_summary(rows):
+    n = sum(r["opinions"] for r in rows)
+    v = sum(len(r["violations"]) for r in rows)
+    return {"opinions": n, "violations": v, "ratio": round(v / n, 2) if n else None}  # 0회는 0% 가 아니다
+
+
 # ── 실행 1건 ──
 def _report(rd):
     f = os.path.join(rd, "report.json")
@@ -284,6 +382,8 @@ def run_codex(run_dir, arm, prompt, ev):
         env = dict(os.environ)
         env.update(_real_dirs())
         env.update(ev)
+        for k in FOREIGN_TOKENS:
+            env.pop(k, None)
         env["CODEX_HOME"] = ch
         env["HOME"] = os.path.join(run_dir, "agent-home")  # Codex 는 ~/.agents/skills 를 스스로 싣는다
         os.makedirs(env["HOME"], exist_ok=True)
@@ -314,7 +414,7 @@ def run_codex(run_dir, arm, prompt, ev):
 
 def run_one(env_name, run_dir, sid, arm, model, ident):
     os.makedirs(run_dir)
-    sc = SCENARIOS[sid]
+    sc = ALL_SCENARIOS[sid]
     rep = {"env": env_name, "scenario": sid, "arm": arm, "ident": ident, "started": time.strftime("%Y-%m-%dT%H:%M:%S%z")}
     srv = drf_replay.Server().start()
     t0 = time.time()
@@ -335,7 +435,7 @@ def run_one(env_name, run_dir, sid, arm, model, ident):
             prompt = ib_prompt(arm, brief=brief, design=design, case=case_dir, draft=draft, wd=wd, lawenv=lawenv)
             rep.update(case_dir=case_dir, design=design, draft=draft)
         else:
-            prompt = cs_prompt(sid)
+            prompt = scenario_prompt(sid)
         open(os.path.join(run_dir, "prompt.txt"), "w", encoding="utf-8").write(prompt)
         av = agent_vars(arm, ev)
         rep.update(run_claude(run_dir, arm, prompt, av, model) if env_name == "claude" else run_codex(run_dir, arm, prompt, av))
@@ -362,6 +462,19 @@ def edb_weekly():
     return 0.0 if w.get("resetsAt") and w["resetsAt"] < time.time() else float(w.get("utilization") or 0)
 
 
+def us_precheck(folder):
+    """FR-26 사전 시험(과금 0) — 평가와 같은 빈 CASE_SEARCH_HOME·토큰 없이 익명 us-search 한 번이 되는지."""
+    env = {k: v for k, v in os.environ.items() if k not in FOREIGN_TOKENS}
+    env["CASE_SEARCH_HOME"] = os.path.join(folder, "case-search-home")
+    p = subprocess.run([sys.executable, FOREIGNCASE, "us-search", "Miranda v. Arizona", "--court", "scotus"], env=env,
+                       capture_output=True, timeout=60)
+    try:
+        items = json.loads(p.stdout.decode("utf-8")).get("items") or []
+    except (ValueError, AttributeError):
+        items = []
+    return {"ok": p.returncode == 0 and bool(items), "us_search_items": len(items), "rc": p.returncode}
+
+
 def _spawn(a, idt, out, job):
     cmd = [sys.executable, "-I", os.path.abspath(__file__), "one", "--env", a.env, "--run-dir", os.path.join(out, _name(job)),
            "--scenario", job[0], "--arm", job[1], "--model", a.model, "--ident", json.dumps(idt, sort_keys=True)]
@@ -369,13 +482,17 @@ def _spawn(a, idt, out, job):
 
 
 def cmd_run(a, runner=None, precheck=None, usage=None):
-    precheck = precheck or R.precheck
+    suite = getattr(a, "suite", None) or "fr27"
+    d = SUITE_DEFAULTS[suite]
+    runs = a.runs or d["runs"]
+    max_calls = a.max_calls or d["max_calls"]
+    precheck = precheck or (R.precheck if suite == "fr27" else us_precheck)
     usage = usage or edb_weekly
     idt = e2e.ident(a.model if a.env == "claude" else "codex-default")
     idt["env"] = a.env
     runner = runner or (lambda out, job: _spawn(a, idt, out, job))
     out = os.path.abspath(a.resume) if a.resume else os.path.join(os.path.abspath(a.out), "%s-%s" % (a.env, time.strftime("%Y%m%d-%H%M%S")))
-    jobs = [(s, arm, i) for s in (a.only or sorted(SCENARIOS)) for arm in (a.arms or ARMS) for i in range(1, a.runs + 1)]
+    jobs = [(s, arm, i) for s in (a.only or sorted(SUITES[suite])) for arm in (a.arms or d["arms"]) for i in range(1, runs + 1)]
     todo = [j for j in jobs if (_report(os.path.join(out, _name(j))) or {}).get("ident") != idt]
     n = len(todo)
     print("실행 폴더: %s" % out)
@@ -387,10 +504,12 @@ def cmd_run(a, runner=None, precheck=None, usage=None):
         print("실행 폴더 상위에 개인 스킬 폴더가 있습니다(%s) — 그 밖(예: /Users/Shared)을 고르십시오" % ", ".join(above), file=sys.stderr)
         return 6
     if a.env == "claude":
-        print("예상 호출: claude -p %d회(모델 %s · 계정 edb 토큰) · Codex 0회 · Jev 0회 · 상한 %d회" % (n, a.model, a.max_calls), flush=True)
+        print("예상 호출: claude -p %d회(모델 %s · 계정 edb 토큰) · Codex 0회 · Jev 0회 · 상한 %d회" % (n, a.model, max_calls), flush=True)
     else:
-        print("예상 호출: claude -p 0회 · Codex %d회(계정 ~/.codex 인증 사본 · 기본 모델) · Jev 0회 · 상한 %d회" % (n, a.max_calls), flush=True)
-    if n > a.max_calls:
+        print("예상 호출: claude -p 0회 · Codex %d회(계정 ~/.codex 인증 사본 · 기본 모델) · Jev 0회 · 상한 %d회" % (n, max_calls), flush=True)
+    if suite == "fr26":
+        print("FR-26 은 us-search 로 실제 CourtListener 를 익명으로 부른다(사전 시험 1건 + 실행당 몇 건)", flush=True)
+    if n > max_calls:
         print("상한 초과 — 시작하지 않는다", file=sys.stderr)
         return 2
     if a.env == "claude":
@@ -416,12 +535,16 @@ def judge_dir(rd):
     if rep is None:
         return None
     sid = rep["scenario"]
+    skill = ALL_SCENARIOS[sid]["skill"]
     events = open(os.path.join(rd, "agent.jsonl"), encoding="utf-8", errors="replace").read() if os.path.exists(os.path.join(rd, "agent.jsonl")) else ""
     row = {"run": os.path.basename(rd), "env": rep["env"], "scenario": sid, "arm": rep["arm"], "ok": rep.get("ok"),
            "error": rep.get("error"), "audit": audit_events(events), "drf_requests": rep.get("drf_requests"),
            "bigcase_files": rep.get("bigcase_files"), "cost_usd": rep.get("cost_usd"), "usage": rep.get("usage"),
            "seconds": rep.get("seconds")}
-    if SCENARIOS[sid]["skill"] == "intent-brief":
+    if skill == "case-search-us":
+        row.update(us_audit(events))
+        row["final"] = (rep.get("final") or "")[:1500]
+    elif skill == "intent-brief":
         d = rep.get("draft")
         text = open(d, encoding="utf-8").read() if d and os.path.exists(d) else ""
         src = "\n".join(open(f, encoding="utf-8", errors="replace").read() for f in glob.glob(os.path.join(rep.get("case_dir", ""), "*"))
@@ -447,11 +570,21 @@ def cmd_judge(a):
             w, wo = arms.get("with"), arms.get("without")
             if w and wo:
                 arms["gain"] = round(w["pass"] / w["n"] - wo["pass"] / wo["n"], 2)
-    res = {"table": table, "runs": rows,
+    us_rows = [r for r in rows if ALL_SCENARIOS[r["scenario"]]["skill"] == "case-search-us"]
+    res = {"table": table, "runs": rows, "fr26": us_summary(us_rows) if us_rows else None,
            "cost_usd": round(sum(r["cost_usd"] or 0 for r in rows), 2),
            "audit_total": {k: sum(r["audit"][k] for r in rows) for k in AUDIT}}
     json.dump(res, open(os.path.join(a.out[0], "judge.json"), "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+    if us_rows:
+        s = res["fr26"]
+        print("[FR-26] 실행 %d · us-search %d · us-opinion %d · 검색 결과에 없던 식별자 %d · 비율 %s" % (
+            len(us_rows), sum(r["searches"] for r in us_rows), s["opinions"], s["violations"],
+            "-(us-opinion 0회)" if s["ratio"] is None else "%d%%" % round(s["ratio"] * 100)))
+        rows = [r for r in rows if r not in us_rows]
+        table = {e: {k: v for k, v in scn.items() if k not in US_SCENARIOS} for e, scn in table.items()}
     for env, scn in sorted(table.items()):
+        if not scn:
+            continue
         print("[%s]" % env)
         for sid in sorted(scn):
             arms = scn[sid]
@@ -467,9 +600,10 @@ def main():
     s.add_argument("--env", choices=("claude", "codex"), required=True)
     g = s.add_mutually_exclusive_group(required=True)
     g.add_argument("--out"); g.add_argument("--resume")
-    s.add_argument("--runs", type=int, default=3); s.add_argument("--jobs", type=int, default=4)
-    s.add_argument("--only", nargs="*", choices=sorted(SCENARIOS)); s.add_argument("--arms", nargs="*", choices=ARMS)
-    s.add_argument("--model", default="sonnet"); s.add_argument("--max-calls", type=int, default=36)
+    s.add_argument("--suite", choices=sorted(SUITES), default="fr27")
+    s.add_argument("--runs", type=int); s.add_argument("--jobs", type=int, default=4)  # 기본값은 SUITE_DEFAULTS
+    s.add_argument("--only", nargs="*", choices=sorted(ALL_SCENARIOS)); s.add_argument("--arms", nargs="*", choices=ARMS)
+    s.add_argument("--model", default="sonnet"); s.add_argument("--max-calls", type=int)
     s.add_argument("--weekly-cap", type=float, default=0.95)
     s = sub.add_parser("one")
     s.add_argument("--env", required=True); s.add_argument("--run-dir", required=True); s.add_argument("--scenario", required=True)
