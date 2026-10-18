@@ -208,3 +208,14 @@ def test_precheck_uses_fresh_folder_on_resume(tmp_path):
         E.cmd_run(_args(tmp_path, resume=str(tmp_path / "run"), runs=1, only=["CS1"], arms=["with"]),
                   runner=lambda out, job: True, precheck=pre, usage=lambda: 0.0)
     assert len(set(seen)) == 2 and all(not os.path.exists(os.path.join(s, "cite")) for s in seen)
+
+
+def test_run_refuses_out_under_personal_skill_dirs(tmp_path):
+    home = tmp_path / "home"
+    (home / ".claude" / "skills").mkdir(parents=True)
+    calls = []
+    rc = E.cmd_run(_args(None, out=str(home / ".cache" / "eval")), runner=lambda *x: calls.append(x),
+                   precheck=lambda o: {"ok": True}, usage=lambda: 0.0)
+    assert rc == 6 and calls == []
+    assert E.skill_dirs_above(str(home / ".cache" / "eval")) == [str(home / ".claude")]
+    assert E.skill_dirs_above(str(tmp_path / "clean" / "x")) == []

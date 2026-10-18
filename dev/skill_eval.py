@@ -16,7 +16,7 @@ repo 밖 workspace 접근을 막고, judge 전에 실행 기록의 실제 명령
 판정(judge)은 서면 형식(앵커)에 기대지 않는 같은 기준표로 두 조건을 본다. Jev 는 쓰지 않는다.
 
 사용:
-  skill_eval.py run   --env claude|codex --out <repo 밖 폴더> [--runs 3] [--jobs 4] [--only IB1 ...] [--arms with without]
+  skill_eval.py run   --env claude|codex --out <repo·홈 밖 폴더> [--runs 3] [--jobs 4] [--only IB1 ...] [--arms with without]
                       [--model sonnet] [--max-calls 36] [--weekly-cap 0.95]      실행 전 예상 호출 수를 찍고 상한을 넘으면 시작 안 함
   skill_eval.py run   --env ... --resume <실행 폴더>                              같은 식별값 결과는 건너뛴다
   skill_eval.py judge --out <실행 폴더> [<실행 폴더> ...]                          기준표 판정·통과율 표(judge.json)
@@ -104,6 +104,19 @@ def guard_blocked(payload):
 def guard_hooks():
     cmd = "%s %s guard" % (shlex.quote(sys.executable), shlex.quote(os.path.abspath(__file__)))
     return {"hooks": {"PreToolUse": [{"hooks": [{"type": "command", "command": cmd}]}]}}
+
+
+def skill_dirs_above(path):
+    """path 의 상위 폴더에 있는 개인 스킬 폴더 — Claude Code 는 작업 폴더에서 위로 올라가며 .claude/skills 를 프로젝트 스킬로 싣는다."""
+    found, cur = [], os.path.abspath(path)
+    while True:
+        for name in (".claude", ".agents"):
+            if os.path.isdir(os.path.join(cur, name, "skills")):
+                found.append(os.path.join(cur, name))
+        parent = os.path.dirname(cur)
+        if parent == cur:
+            return found
+        cur = parent
 
 
 def _real_dirs():
@@ -360,6 +373,10 @@ def cmd_run(a, runner=None, precheck=None, usage=None):
     if os.path.commonpath([out, REPO]) == REPO:  # 공개 repo 밖에 둔다 — Codex 플러그인 설치가 repo 를 복사하며 자기 자신을 품는다
         print("실행 폴더가 repo 안입니다 — repo 밖 폴더를 고르십시오", file=sys.stderr)
         return 5
+    above = skill_dirs_above(out)
+    if above:  # 홈 아래(~/.cache 등)면 ~/.claude/skills 가 두 조건 모두에 실린다
+        print("실행 폴더 상위에 개인 스킬 폴더가 있습니다(%s) — 그 밖(예: /Users/Shared)을 고르십시오" % ", ".join(above), file=sys.stderr)
+        return 6
     if a.env == "claude":
         print("예상 호출: claude -p %d회(모델 %s · 계정 edb 토큰) · Codex 0회 · Jev 0회 · 상한 %d회" % (n, a.model, a.max_calls), flush=True)
     else:
