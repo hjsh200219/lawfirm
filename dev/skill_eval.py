@@ -353,6 +353,29 @@ def us_audit(text):
     return r
 
 
+_QUOTED = re.compile(r'[“"]([^"”\n]{40,})[”"]')
+_BLOCKQUOTE = re.compile(r"(?m)^>\s*(.+)$")
+
+
+def _norm(s):
+    return re.sub(r"[^a-z0-9]", "", s.lower())
+
+
+def unchecked_quotes(final, text):
+    """답에 실린 영어 인용문 가운데 어떤 도구 결과에도 없던 것(기억 인용) — 공백·문장부호 차이는 무시한다."""
+    seen = _norm("\n".join(_result_text(b) for b in _blocks(text) if b.get("type") == "tool_result"))
+    out, keys = [], set()
+    for q in _QUOTED.findall(final or "") + [m.strip(' "“”') for m in _BLOCKQUOTE.findall(final or "")]:
+        letters = len(re.findall(r"[A-Za-z]", q))
+        k = _norm(q)
+        if letters < 30 or letters < 0.6 * len(q.replace(" ", "")) or k in keys:
+            continue
+        keys.add(k)
+        if k not in seen:
+            out.append(q)
+    return out
+
+
 def us_summary(rows):
     n = sum(r["opinions"] for r in rows)
     v = sum(len(r["violations"]) for r in rows)
@@ -566,6 +589,7 @@ def judge_dir(rd):
            "seconds": rep.get("seconds")}
     if skill == "case-search-us":
         row.update(us_audit(events))
+        row["unchecked_quotes"] = unchecked_quotes(rep.get("final"), events)
         row["final"] = (rep.get("final") or "")[:1500]
     elif skill == "intent-brief":
         d = rep.get("draft")
@@ -600,9 +624,10 @@ def cmd_judge(a):
     json.dump(res, open(os.path.join(a.out[0], "judge.json"), "w", encoding="utf-8"), ensure_ascii=False, indent=1)
     if us_rows:
         s = res["fr26"]
-        print("[FR-26] 실행 %d · us-search %d · us-opinion %d · 검색 결과에 없던 식별자 %d · 비율 %s" % (
+        print("[FR-26] 실행 %d · us-search %d · us-opinion %d · 검색 결과에 없던 식별자 %d · 비율 %s · 기억 인용 실행 %d" % (
             len(us_rows), sum(r["searches"] for r in us_rows), s["opinions"], s["violations"],
-            "-(us-opinion 0회)" if s["ratio"] is None else "%d%%" % round(s["ratio"] * 100)))
+            "-(us-opinion 0회)" if s["ratio"] is None else "%d%%" % round(s["ratio"] * 100),
+            sum(bool(r["unchecked_quotes"]) for r in us_rows)))
         rows = [r for r in rows if r not in us_rows]
         table = {e: {k: v for k, v in scn.items() if k not in US_SCENARIOS} for e, scn in table.items()}
     for env, scn in sorted(table.items()):

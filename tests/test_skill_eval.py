@@ -364,3 +364,16 @@ def test_us_audit_expands_for_loop():
     braced = 'for oid in 9435068; do python3 /r/foreigncase.py us-opinion "${oid}"; done'
     r = E.us_audit("\n".join([_tool_use("a", FX + ' us-search "Twombly"'), _tool_result("a", out), _tool_use("b", braced)]))
     assert r["opinions"] == 1 and r["violations"] == []
+
+
+def test_unchecked_quotes_counts_memory_quotes_only():
+    """본문을 못 받았는데 답에 실린 영어 인용문 — 도구 결과(검색 발췌 포함)에 없던 것만 센다(공백·문장부호 차이는 무시)."""
+    snippet = json.dumps({"items": [{"snippet": "The Constitution promises libertyto all within its reach, a liberty that includes"}]})
+    ev = "\n".join([_tool_use("a", FX + ' us-search "Obergefell"'), _tool_result("a", snippet)])
+    final = ('발췌: "The Constitution promises liberty to all within its reach, a liberty that includes"\n'
+             '> "It is emphatically the province and duty of the judicial department to say what the law is."\n'
+             '> 판결문 본문은 확인하지 못했습니다 — 토큰이 없어 본문 조회가 no_key 로 끝났습니다.\n'
+             '인용: "347 U.S. 483 (1954)"')
+    q = E.unchecked_quotes(final, ev)
+    assert q == ["It is emphatically the province and duty of the judicial department to say what the law is."]
+    assert E.unchecked_quotes("인용문은 싣지 않습니다.", ev) == []
