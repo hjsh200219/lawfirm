@@ -358,6 +358,7 @@ _BLOCKQUOTE = re.compile(r"(?m)^>\s*(.+)$")
 
 
 def _norm(s):
+    s = re.sub(r"\\[nrtu]", " ", s)  # JSON 문자열로 찍힌 도구 출력의 줄바꿈 등 — 남은 n 이 앞뒤 낱말에 붙지 않게
     return re.sub(r"[^a-z0-9]", "", s.lower())
 
 

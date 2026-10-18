@@ -377,3 +377,10 @@ def test_unchecked_quotes_counts_memory_quotes_only():
     q = E.unchecked_quotes(final, ev)
     assert q == ["It is emphatically the province and duty of the judicial department to say what the law is."]
     assert E.unchecked_quotes("인용문은 싣지 않습니다.", ev) == []
+
+
+def test_unchecked_quotes_reads_json_escaped_snippet():
+    """도구 출력이 JSON 문자열이면 발췌의 줄바꿈이 `\\n` 두 글자로 남는다 — 그 n 이 붙어 발췌 인용을 기억 인용으로 세면 안 된다."""
+    out = json.dumps({"items": [{"snippet": "Mr. Justice Black\ndelivered the opinion of the Court.\nPetitioner"}]}, indent=1)
+    ev = "\n".join([_tool_use("a", FX + ' us-search "Gideon"'), _tool_result("a", out)])
+    assert E.unchecked_quotes('첫 문장은 "Mr. Justice Black delivered the opinion of the Court." 입니다.', ev) == []
