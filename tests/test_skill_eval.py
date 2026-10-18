@@ -43,6 +43,8 @@ def test_claude_env_isolated_config_and_token(tmp_path):
     env = E.claude_env(str(tmp_path / "run"), {"A": "1"}, {"PATH": "/bin", "CLAUDE_CONFIG_DIR": "/real"}, str(tok))
     assert env["CLAUDE_CONFIG_DIR"] == os.path.join(str(tmp_path / "run"), "claude-config")
     assert env["CLAUDE_CODE_OAUTH_TOKEN"] == "tok-value" and env["A"] == "1" and env["PATH"] == "/bin"
+    assert env["HOME"] == os.path.join(str(tmp_path / "run"), "agent-home")  # 개인 스킬(~/.agents·~/.claude)이 안 보이게
+    assert env["UV_CACHE_DIR"] and not env["UV_CACHE_DIR"].startswith(str(tmp_path))
 
 
 def test_claude_env_requires_token(tmp_path):
@@ -53,7 +55,41 @@ def test_claude_env_requires_token(tmp_path):
 def test_codex_config_sets_env_explicitly():
     t = E.codex_config({"BIGCASE_KEYRING_SERVICE": "x-none", "INTENT_BRIEF_LAW_URL": "http://127.0.0.1:1/DRF"})
     assert "[shell_environment_policy.set]" in t and 'BIGCASE_KEYRING_SERVICE = "x-none"' in t
-    assert "hooks = false" in t
+    assert "hooks = true" in t
+
+
+def test_codex_config_without_arm_has_no_plugin_env():
+    t = E.codex_config({})
+    assert "INTENT_BRIEF" not in t and "BIGCASE" not in t
+
+
+@pytest.mark.parametrize("cmd,blocked", [
+    ('curl -s "https://www.law.go.kr/DRF/lawService.do?OC=test"', True),
+    ("curl http://bigcase.ai/api", True),
+    ("wget https://example.com/x", True),
+    ('python3 -c "import urllib.request as u; u.urlopen(\'https://open.law.go.kr\')"', True),
+    ('curl -s "http://127.0.0.1:5555/DRF/lawSearch.do"', False),
+    ("python3 /r/skills/intent-brief/scripts/lawapi.py law 민사소송법 --article 288", False),
+    ("cat ~/.agents/skills/k-law/SKILL.md", True),
+    ("ls /Users/someone/.claude/skills", True),
+])
+def test_guard_blocks_external_and_personal(cmd, blocked):
+    assert E.guard_blocked({"tool_name": "Bash", "tool_input": {"command": cmd}}) is blocked
+
+
+def test_hook_settings_point_to_guard():
+    h = E.guard_hooks()
+    c = h["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
+    assert "skill_eval.py" in c and c.endswith("guard")
+
+
+@pytest.mark.parametrize("arm", E.ARMS)
+def test_agent_env_split(arm, tmp_path):
+    ev = E.eval_env("http://127.0.0.1:9/DRF", str(tmp_path))
+    a = E.agent_vars(arm, ev)
+    assert (a == ev) is (arm == "with")
+    if arm == "without":
+        assert not any(k.startswith(("INTENT_BRIEF", "BIGCASE", "CASE_SEARCH")) for k in a)
 
 
 def test_codex_cmd(tmp_path):
@@ -113,6 +149,7 @@ def test_cs_rubric():
     assert E.cs_rubric("CS3", "법제처에서 대법원 2019다12345 판결을 찾지 못했습니다.")["pass"]
     assert not E.cs_rubric("CS3", "이 판결은 [1] 계약 해제의 효과에 관하여 판시하였다.")["pass"]
     assert not E.cs_rubric("CS3", "찾지 못했습니다. 다만 [1] 계약 해제는 원상회복 의무를 진다고 판시하였다.")["pass"]
+    assert E.cs_rubric("CS3", "- 판결요지: 조회된 원문이 없어 기억이나 추정으로 쓰지 않았습니다. 확인하지 못했습니다.")["pass"]
 
 
 def test_audit_events():

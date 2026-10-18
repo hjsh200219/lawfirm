@@ -8,6 +8,10 @@
 intent-brief 는 인터뷰·설계 확인(1–4단계)을 replay.py 로 모델 없이 똑같이 끝낸 뒤 초안만 모델이 쓴다 —
 있음은 replay 의 DRAFT_PROMPT(SKILL.md 5–7단계·스크립트), 없음은 같은 입력·같은 금지 사항에 스크립트 언급만 뺀 지시.
 case-search 는 두 조건에 같은 질문을 준다. 웹 도구(WebFetch·WebSearch)는 두 조건 모두 끈다(Claude).
+에이전트는 두 조건 모두 실행 폴더의 빈 HOME 으로 돌린다(개인 스킬 ~/.agents·~/.claude/skills 가 안 보이게 — Codex 는
+~/.agents/skills 를 스스로 싣는다). 두 조건 공통 PreToolUse 훅(`guard`)이 법제처·빅케이스·루프백 밖 URL·개인 스킬·
+repo 밖 workspace 접근을 막고, judge 전에 실행 기록의 실제 명령을 다시 센다(차단이 완전하지 않으므로 이중 확인).
+평가 환경변수(재생 서버 주소·빅케이스 차단)는 플러그인 스크립트용이라 스킬 있음 조건에만 준다.
 법제처는 실행마다 루프백 재생 서버(drf_replay), 빅케이스는 없는 키체인 서비스·빈 세션 폴더로 막는다(실서비스 0).
 판정(judge)은 서면 형식(앵커)에 기대지 않는 같은 기준표로 두 조건을 본다. Jev 는 쓰지 않는다.
 
@@ -59,7 +63,10 @@ SCENARIOS = {
 RECORDED_CASES = {k[5] for k in drf_replay.ROUTES if k[5]}
 HEDGE = ("확인 필요", "미확인", "확인되지", "확인하지 못", "확인할 수 없")
 NOT_FOUND = ("찾지 못", "찾을 수 없", "확인되지 않", "확인할 수 없", "확인하지 못", "조회되지 않", "결과가 없", "존재하지 않")
-HOLDING = ("[1]", "판시하였", "판시했", "판시한", "라고 판단", "판결요지:", "【판결요지】", "요지는 다음")
+HOLDING = ("[1]", "판시하였", "판시했", "판시한", "라고 판단", "【판결요지】", "요지는 다음")
+# 두 조건 공통 차단(PreToolUse 훅) — 실서비스(법제처·빅케이스·루프백 밖 URL)와 개인 스킬·workspace(이 repo 밖) 접근
+_GUARD = re.compile(r"law\.go\.kr|bigcase\.ai|https?://(?!127\.0\.0\.1|localhost)|\.agents/|/\.claude/|k-public-data|kpd\.py"
+                    r"|/Users/[^/\s\"']+/workspace/(?!ProjectLawFirm/lawfirm)")
 AUDIT = ("law.go.kr", "WebFetch", "WebSearch", "curl ", "lawapi.py", "cite_check.py", "SKILL.md", "bigcase")
 _CASE = re.compile(r"(?<!\d)(\d{4}|\d{2})\s*(가합|가단|가소|구합|구단|고합|고단|고정|카합|카단|재다|나|다|라|마|그|두|누|도|노|므|르|드|스|브|후|허)"
                    r"\s*(\d{1,7})(?!\d)")
@@ -83,6 +90,35 @@ def eval_env(url, run_dir):
     return env
 
 
+def agent_vars(arm, ev):
+    """에이전트 프로세스에 줄 평가 환경변수 — 플러그인 스크립트용 손잡이라 스킬 없음 조건에는 주지 않는다."""
+    return dict(ev) if arm == "with" else {}
+
+
+def guard_blocked(payload):
+    inp = payload.get("tool_input")
+    text = inp if isinstance(inp, str) else json.dumps(inp, ensure_ascii=False)
+    return bool(_GUARD.search(text or ""))
+
+
+def guard_hooks():
+    cmd = "%s %s guard" % (shlex.quote(sys.executable), shlex.quote(os.path.abspath(__file__)))
+    return {"hooks": {"PreToolUse": [{"hooks": [{"type": "command", "command": cmd}]}]}}
+
+
+def _real_dirs():
+    return {"UV_CACHE_DIR": os.path.expanduser("~/.cache/uv"),
+            "UV_PYTHON_INSTALL_DIR": os.path.expanduser("~/.local/share/uv/python")}
+
+
+def claude_bin():
+    if os.environ.get("SKILL_EVAL_CLAUDE"):
+        return os.environ["SKILL_EVAL_CLAUDE"]
+    vers = glob.glob(os.path.expanduser("~/.local/share/claude/versions/*"))
+    key = lambda v: [int(x) if x.isdigit() else 0 for x in os.path.basename(v).split(".")]  # noqa: E731
+    return max(vers, key=key) if vers else "claude"  # 래퍼(~/.local/bin/claude)는 실제 HOME 을 요구한다
+
+
 def claude_cmd(arm, model, claude="claude"):
     cmd = [claude, "-p", "--output-format", "stream-json", "--verbose", "--permission-mode", "bypassPermissions",
            "--disallowedTools", "WebFetch,WebSearch", "--model", model]
@@ -93,21 +129,24 @@ def claude_env(run_dir, ev, base, token_file):
     if not os.path.exists(token_file):
         raise EvalError("무인 claude -p 토큰 파일이 없습니다: %s" % token_file)
     env = dict(base)
+    env.update(_real_dirs())
     env.update(ev)
     env["CLAUDE_CONFIG_DIR"] = os.path.join(run_dir, "claude-config")  # 설치 플러그인·사용자 훅을 싣지 않는다
+    env["HOME"] = os.path.join(run_dir, "agent-home")  # 개인 스킬(~/.agents·~/.claude/skills)이 안 보이게
     env["CLAUDE_CODE_OAUTH_TOKEN"] = open(token_file, encoding="utf-8").read().strip()
     return env
 
 
 def codex_config(ev):
-    lines = ["[features]", "hooks = false", "", "[shell_environment_policy]", 'inherit = "all"', "",
+    lines = ["[features]", "hooks = true", "", "[shell_environment_policy]", 'inherit = "all"', "",
              "[shell_environment_policy.set]"]  # KEY 가 든 이름은 기본 제외 대상이라 명시적으로 넣는다
     lines += ["%s = %s" % (k, json.dumps(v)) for k, v in sorted(ev.items())]
     return "\n".join(lines) + "\n"
 
 
 def codex_cmd(run_dir, prompt, codex="codex"):
-    return [codex, "exec", "-C", run_dir, "--skip-git-repo-check", "--dangerously-bypass-approvals-and-sandbox", "--json",
+    return [codex, "exec", "-C", run_dir, "--skip-git-repo-check", "--dangerously-bypass-approvals-and-sandbox",
+            "--dangerously-bypass-hook-trust", "--json",
             "-o", os.path.join(run_dir, "last.txt"), prompt]
 
 
@@ -190,8 +229,11 @@ def _name(job):
 
 
 def run_claude(run_dir, arm, prompt, ev, model):
-    cmd = claude_cmd(arm, model, claude=os.environ.get("SKILL_EVAL_CLAUDE", "claude"))
+    cmd = claude_cmd(arm, model, claude=claude_bin())
     env = claude_env(run_dir, ev, os.environ, TOKEN_FILE)
+    os.makedirs(env["HOME"], exist_ok=True)
+    os.makedirs(env["CLAUDE_CONFIG_DIR"], exist_ok=True)
+    json.dump(guard_hooks(), open(os.path.join(env["CLAUDE_CONFIG_DIR"], "settings.json"), "w", encoding="utf-8"))
     p = subprocess.run(cmd, input=prompt.encode("utf-8"), env=env, capture_output=True, cwd=run_dir, timeout=1800)
     open(os.path.join(run_dir, "agent.jsonl"), "wb").write(p.stdout)
     open(os.path.join(run_dir, "agent.err"), "wb").write(p.stderr)
@@ -216,9 +258,13 @@ def run_codex(run_dir, arm, prompt, ev):
         shutil.copyfile(CODEX_AUTH, auth)
         os.chmod(auth, 0o600)
         open(os.path.join(ch, "config.toml"), "w", encoding="utf-8").write(codex_config(ev))
+        json.dump(guard_hooks(), open(os.path.join(ch, "hooks.json"), "w", encoding="utf-8"))
         env = dict(os.environ)
+        env.update(_real_dirs())
         env.update(ev)
         env["CODEX_HOME"] = ch
+        env["HOME"] = os.path.join(run_dir, "agent-home")  # Codex 는 ~/.agents/skills 를 스스로 싣는다
+        os.makedirs(env["HOME"], exist_ok=True)
         if arm == "with":
             for c in (["plugin", "marketplace", "add", REPO], ["plugin", "add", "lawfirm@lawfirm"]):
                 q = subprocess.run([codex] + c, env=env, capture_output=True, timeout=120, cwd=run_dir)
@@ -269,7 +315,8 @@ def run_one(env_name, run_dir, sid, arm, model, ident):
         else:
             prompt = cs_prompt(sid)
         open(os.path.join(run_dir, "prompt.txt"), "w", encoding="utf-8").write(prompt)
-        rep.update(run_claude(run_dir, arm, prompt, ev, model) if env_name == "claude" else run_codex(run_dir, arm, prompt, ev))
+        av = agent_vars(arm, ev)
+        rep.update(run_claude(run_dir, arm, prompt, av, model) if env_name == "claude" else run_codex(run_dir, arm, prompt, av))
         rep["ok"] = rep["rc"] == 0
     except (EvalError, R.ReplayError, subprocess.TimeoutExpired, OSError) as e:
         rep.update(ok=False, error="%s: %s" % (type(e).__name__, e))
@@ -402,7 +449,17 @@ def main():
     s.add_argument("--env", required=True); s.add_argument("--run-dir", required=True); s.add_argument("--scenario", required=True)
     s.add_argument("--arm", required=True); s.add_argument("--model", default="sonnet"); s.add_argument("--ident", required=True)
     s = sub.add_parser("judge"); s.add_argument("--out", nargs="+", required=True)
+    sub.add_parser("guard")
     a = ap.parse_args()
+    if a.cmd == "guard":  # PreToolUse 훅 — 막으면 exit 2(이유는 stderr)
+        try:
+            payload = json.load(sys.stdin)
+        except ValueError:
+            return 0
+        if guard_blocked(payload):
+            sys.stderr.write("평가 환경: 외부 서비스·개인 스킬·repo 밖 workspace 접근은 막혀 있습니다\n")
+            return 2
+        return 0
     if a.cmd == "one":
         rep = run_one(a.env, os.path.abspath(a.run_dir), a.scenario, a.arm, a.model, json.loads(a.ident))
         return 0 if rep.get("ok") else 1
