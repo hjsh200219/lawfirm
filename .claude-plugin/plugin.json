@@ -1,6 +1,6 @@
 {
   "name": "lawfirm",
-  "version": "0.8.1",
+  "version": "0.8.2",
   "description": "한국 변호사용 법률 업무 플러그인. ① 의도 기반 민사 준비서면·답변서(intent-brief): 변호사가 서면의 의도(전부 승소·손해 최소화·조정 유도·입장 고정·쟁점 재구성·상소 대비)를 고르면 소송 전체 기준 유불리를 먼저 검토하고 그 의도에 맞춘 초안(.docx)과 내부용 의도대응표를 만든다. ② 법률 문서 스킬 6종(내용증명·고소장·형사합의서·사실확인서·형사절차 시뮬레이터·양형 예측, thechain.lawyer) — 본문 전 구성안 승인. ③ 판례·법령 검색(case-search): 법제처 공식 원문(법령·조문·판례·헌재결정·법령해석례·별표·서식), 빅케이스(계정이 있을 때), 해외 판례(미국 CourtListener·독일 OpenLegalData). ④ 사건 전략 메모(brainstorming-lawfirm): IRAC·레드팀·위험 점수표. ⑤ 계약 검토(review-contract)·NDA 분류(triage-nda): 한국 강행규정·사무소 플레이북. ⑥ 법정기간 만료일·인지액·송달료·지연손해금 계산과 기한 D-day 알림(litigation-calc). ⑦ 제출 전 독립 검토(independent-review). ⑧ URL → Scrapling API 클라이언트(site-api). 키·자격증명은 각자 입력 창으로 등록. 인용은 법제처 Open API 원문으로 조문·판례 존재 대조(법령명·사건번호 정확 일치)를 한다(사용자 키). AI는 실수할 수 있으며 최종 검토와 제출 판단은 사용 변호사의 책임입니다. | Korean legal practice plugin: intent-driven civil briefs, six legal document skills, case-law/statute search (Korea, US, Germany), case strategy (IRAC + red team), Korean-law contract and NDA review, deadline and litigation cost calculators, independent review, and site API client generation. AI can make mistakes; the attorney is responsible for final review.",
   "author": {
     "name": "hoshin",

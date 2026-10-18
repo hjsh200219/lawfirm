@@ -59,7 +59,7 @@ codex plugin add lawfirm@lawfirm
   writable_roots = ["/Users/<사용자>/.intent-brief"]   # Windows: 'C:\Users\<사용자>\AppData\Local\intent-brief'
   ```
 - 스크립트 경로: Codex 셸에는 `${CLAUDE_PLUGIN_ROOT}` 가 없어서, 스킬이 자기 문서 위치에서 플러그인 폴더를 찾아 절대경로로 바꿔 씁니다(따로 설정할 것 없음).
-- 업데이트: `codex plugin marketplace upgrade lawfirm` → `codex plugin add lawfirm@lawfirm`. 설치 확인: `codex plugin list` 에 `lawfirm@lawfirm installed, enabled 0.8.1`.
+- 업데이트: `codex plugin marketplace upgrade lawfirm` → `codex plugin add lawfirm@lawfirm`. 설치 확인: `codex plugin list` 에 `lawfirm@lawfirm installed, enabled 0.8.2`.
 
 쓰는 기능에 따라 더 필요한 것:
 
@@ -115,7 +115,7 @@ codex plugin add lawfirm@lawfirm
 
 법률 문서 스킬 6종은 thechain.lawyer(이영남 변호사 사무소)의 스킬입니다(MIT). 법령·판례 조회는 이 플러그인의 법제처 직접 호출을 쓰고(`references/law-lookup.md`), 산출물 끝에는 유의사항 1문장만 붙습니다 — 상담 안내는 사용 변호사가 자기 사무소 정보를 넣었을 때만 붙습니다(`references/cta-config.md`, 작업 폴더의 office.json). 원저작 출처는 이 문단에만 적습니다. 계약 검토·NDA 분류·위험 점수표는 Anthropic knowledge-work-plugins 의 legal 스킬(Apache-2.0) 구조를 한국법으로 다시 썼습니다 — [고지](third_party/anthropic-legal/NOTICE.md).
 
-## 지원 범위 (0.8.1)
+## 지원 범위 (0.8.2)
 
 - `intent-brief` 서면: 민사 준비서면(원고·피고), 답변서(피고). 소장·항소이유서·가사·행정은 범위 밖(형사 문서는 위 법률 문서 스킬).
 - `case-search`: 법제처·빅케이스·미국·독일. LBOX 는 준비 중(정찰 자료 `docs/case-search/lbox/`).
@@ -153,6 +153,7 @@ uv run --no-project --with "scrapling[fetchers]>=0.4.11,<0.5" --with "keyring>=2
 
 ## 변경 이력
 
+- **0.8.2 (2026-10-18)** — 사용 통계 요약(`intent.py stats`)에 메일 링크를 더했습니다. 링크를 누르면 받는 주소(inter349@gmail.com)와 허용 필드 7개만 든 본문이 채워진 메일 앱이 열리고, 내용을 확인한 뒤 직접 보냅니다. 플러그인이 통계를 보내지는 않으며 보낼지는 선택입니다.
 - **0.8.1 (2026-10-18)** — 「미국 연방대법원 ○○ 판결문 본문 인용」처럼 미국 판결문 원문을 묻는 질문에서 case-search 가 선택되도록 트리거를 보강했습니다(시험 질문 12개에서 선택 0 → 12). CourtListener 토큰이 없어 미국 판결문 본문을 받지 못하면 판결문 문장을 기억으로 인용하지 않고, 검색 결과의 판례명·인용·URL·발췌만 씁니다.
 - **0.8.0 (2026-10-18)** — Claude Code·Codex 마다 첫 세션에 한 번 사용 고지(변호사 업무 보조용 · 사건 자료가 모델 제공자에게 전송됨 · 작업 폴더 지우기)를 보여 줍니다. 법률 문서 스킬 6종의 산출물 끝에는 유의사항 1문장만 붙고, 상담 안내는 사용 변호사가 자기 사무소 정보(office.json)를 넣었을 때만 붙습니다. 의도대응표에서 법제처 원문과 대조해 확인된 인용에 원문 링크를 붙입니다. 법제처·빅케이스 응답 형식이 바뀌면 0건으로 넘기지 않고 「형식 변경」으로 알리며 업데이트 안내를 붙입니다. 빅케이스 판결 선고일이 원문에 없으면 확인됨으로 올리지 않습니다. 사용 통계 요약을 허용 필드 7개로 좁히고 그대로 붙여 넣을 공유 블록을 더했습니다. 계약 검토·NDA·양형 예측·사이트 API 등 스킬 7개에 외부 장애·키 없음·자료 없음 처리 문장을 보강했습니다. Node·docx 확인 명령을 한 줄로 맞췄습니다.
 - **0.7.0 (2026-10-16)** — Codex 에서도 설치됩니다(`.codex-plugin/plugin.json`·`.agents/plugins/marketplace.json`, 위 「Codex」). 세션 시작 기한 알림이 두 도구가 다 받는 JSON 으로 나오고, 점검 자체가 실패하면 「점검하지 못했습니다」를 알립니다. Codex 샌드박스가 네트워크를 막으면 법제처 장애가 아니라 `network_blocked` 로, 작업 폴더 쓰기를 막으면 `sandbox_write_blocked` 와 설정 방법으로 알립니다(인용 대조가 장애로 넘어가지 않음). 키·계정 입력 창을 띄우지 못한 경우를 「취소」와 구별합니다. 사이트 API 발굴에 Windows Chrome 실행 명령을 넣었습니다. Codex 검토 지적 11건을 고쳤습니다: 서식 내려받기가 오류 페이지를 저장하던 문제, 이율 바뀌는 날 이자를 두 번 세던 문제, 콘텐츠 컨트롤 안 docx 문단을 못 읽던 문제, 「~~옛 날짜~~ 새 날짜」 정정 기한을 놓치던 문제, 사건이 많으면 기한 점검이 말없이 일부를 건너뛰던 문제(이제 경고), 의뢰인별 계약 검토 기준(`--profile`), 생성한 사이트 클라이언트가 다른 사이트 세션을 쓰거나 응답 속 토큰을 출력하던 문제 등.
