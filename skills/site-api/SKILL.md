@@ -12,6 +12,7 @@ allowed-tools: Bash(uv run:*), Bash(python3:*), Bash(python:*), Bash(py:*)
 
 ## 0. 이용 범위 — 먼저 확인
 
+- 대상 사이트 URL 이 없으면 한 번 묻는다.
 - 그 사이트의 이용약관이 자동화된 조회를 금지하는지 변호사에게 확인을 받는다(금지하면 만들지 않는다). `discover.py` 는 robots.txt 가 일반(`*`) 또는 AI 에이전트(`Claude-User`) 접근을 막으면 멈춘다 — 우회하지 않는다. 막힌 사이트는 만들지 않고 변호사에게 그 사실과 대안(공식 API·제휴 문의·빅케이스·법제처)을 알린다.
 - 본인(사무소) 계정으로, 사람이 화면에서 찾는 정도의 빈도로만 쓴다. 만든 클라이언트는 요청 사이에 1초 이상 쉰다. 대량 수집·재배포·다른 사람 계정 사용에는 쓰지 않는다.
 - 아이디·비밀번호는 채팅으로 받지 않는다. 만든 클라이언트의 `setup` 이 입력 창(터미널이면 숨김 입력, macOS·Windows는 OS 창 — `--prompt` 방식과 같다)으로 받아 키체인에 저장한다.
@@ -23,7 +24,7 @@ allowed-tools: Bash(uv run:*), Bash(python3:*), Bash(python:*), Bash(py:*)
 uv run "$A/discover.py" "<URL>" --out <작업 폴더>/spec
 ```
 
-정적 분석으로 페이지와 같은 호스트 스크립트에서 API 경로 후보(`endpoints`)·로그인 후보(`auth_candidates`)·GraphQL 작업명·HTML 에 심은 데이터(`inline_state`)를 찾아 `spec/endpoints.json` 에 쓴다.
+접속 실패·타임아웃이 나면 그대로 알리고 반복 호출하지 않는다. 정적 분석으로 페이지와 같은 호스트 스크립트에서 API 경로 후보(`endpoints`)·로그인 후보(`auth_candidates`)·GraphQL 작업명·HTML 에 심은 데이터(`inline_state`)를 찾아 `spec/endpoints.json` 에 쓴다.
 
 후보가 비었거나 `inline_state` 만 나오면(SPA·서버 렌더링) 실제 네트워크를 잡는다. 사람이 원격 디버깅 Chrome 을 직접 띄우게 안내한다(Claude Code 는 입력 칸에 `!` 를 붙여 실행, Codex 는 사람이 자기 터미널에서 실행):
 ```

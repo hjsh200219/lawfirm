@@ -80,3 +80,9 @@ def test_without_bigcase_account_law_only():
 def test_foreign_commands_documented():
     used = set(re.findall(r"`FX ([a-z-]+)", read(SKILL)))
     assert {"us-search", "us-opinion", "de-search", "de-case", "key"} <= used
+
+
+def test_us_citation_rule_line():
+    """FR-26 — 미국 판례 본문은 검색 결과의 식별자로만(측정은 D-02 승인 범위 밖이라 미실행)."""
+    t = open(os.path.join(ROOT, "skills", "case-search", "SKILL.md"), encoding="utf-8").read()
+    assert "`us-opinion` 은 같은 대화의 `us-search` 결과에 나온 `opinion_id` 로만 부른다" in t

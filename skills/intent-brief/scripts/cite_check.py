@@ -132,6 +132,17 @@ class CachedClient:
         self.written, self.read = self.written[:since[0]], self.read[:since[1]]
 
 
+SOURCE = "https://www.law.go.kr"  # 법제처 공개 조회 화면 — 「확인됨」 행의 원문 위치(키 없이 열린다)
+
+
+def law_url(name, article, sub=0):
+    return "%s/법령/%s/제%d조%s" % (SOURCE, P.nows(name), article, "의%d" % sub if sub else "")
+
+
+def prec_url(number):
+    return "%s/판례/(%s)" % (SOURCE, P.nows(number))
+
+
 CHECK_VERSION = 1  # 빅케이스 「없음」 캐시의 검사 판 — 검사 규칙을 바꾸면 올린다(옛 판 「없음」만 1회 다시 조회)
 
 
@@ -161,7 +172,8 @@ class Checker:
         if not art:
             return {"status": "unverified", "detail": "조문 본문 없음", "law_id": law["law_id"]}
         body = " ".join([art["text"]] + art["paragraphs"][:1])
-        return {"status": "confirmed", "law_id": law["law_id"], "excerpt": re.sub(r"\s+", " ", body)[:200]}
+        return {"status": "confirmed", "law_id": law["law_id"], "excerpt": re.sub(r"\s+", " ", body)[:200],
+                "source_url": law_url(law.get("name") or c["law"], c["article"], c["sub"])}
 
     def check_case(self, c):
         hits = L.find_prec_exact(self.client, c["number"], strict=True)
@@ -176,7 +188,7 @@ class Checker:
                 return {"status": "unverified", "detail": "선고일 불일치(원문 %s)" % hit["date"], "prec_id": hit["prec_id"]}
             d = L.get_prec(self.client, hit["prec_id"])
             return {"status": "confirmed", "prec_id": hit["prec_id"], "title": hit["title"], "date": hit["date"],
-                    "excerpt": _excerpt_case(d) if d else ""}
+                    "excerpt": _excerpt_case(d) if d else "", "source_url": prec_url(hit["number"] or c["number"])}
         detail = "사건번호 정확 일치 없음(법제처 원문 없음)"
         res = {"status": "unverified", "cited_by": None}
         mark = self.client.mark()

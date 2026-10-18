@@ -52,6 +52,7 @@ python3 dev/verify_docs.py                                                      
 - 공개 repo 다. 픽스처의 인명·사건번호는 가명이며 실제 의뢰인 자료를 넣지 않는다.
 - 이 Mac 에서 `main` 커밋은 곧 공개 게시다 — post-commit 훅이 자동 push 하고 Claude·Codex 설치본을 갱신한다([R-push] 예외 열다섯, 끄기 `LAWFIRM_AUTOPUSH=0`, 로그 `~/Library/Logs/lawfirm-autopush.log`). 올리면 안 되는 작업은 다른 브랜치에 둔다. 설치한 사람에게 퍼뜨릴 변경은 버전을 올린다(같은 버전이면 업데이트되지 않는다).
 - 의도 목록·기본값 개정은 사용 통계(`intent.py stats`)를 근거로 한다.
+- 모델이 처음부터 만든 새 스킬(`skills/<이름>/SKILL.md` 를 추가하는 커밋 — 사람 지시로 기존 SKILL.md 를 고친 것은 제외)은 변호사 검토 기록과 그 스킬의 짝지은 평가(스킬 있음·없음) 결과를 커밋 본문에 1줄 이상 적은 뒤에만 `main` 에 커밋한다.
 - 내장 스킬에 MCP·Cowork 경로·AskUserQuestion 을 다시 넣지 않는다(`tests/test_embedded_skills.py` 가 막는다). lyn-lawfirm 원본과는 자동 동기화하지 않는다.
 
 ## 문서

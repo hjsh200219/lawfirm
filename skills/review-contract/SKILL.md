@@ -10,6 +10,8 @@ allowed-tools: Bash(python3:*), Bash(python:*), Bash(py:*)
 
 `$R` = `${CLAUDE_PLUGIN_ROOT}/skills/review-contract/scripts` · 법령 `LAW` = `python3 ${CLAUDE_PLUGIN_ROOT}/skills/intent-brief/scripts/lawapi.py`
 
+법령 조회 전에 `${CLAUDE_PLUGIN_ROOT}/references/law-lookup.md` 를 읽는다 — `no_key` 면 그 「준비」대로 키를 받고, `outage` 면 조문을 `[법제처 장애 — 미확인]` 으로 두고 사용자에게 알린다.
+
 이 메모는 변호사의 검토 자료다. 결론과 상대방에게 보낼 문안은 변호사가 정한다.
 
 ## 1. 받기

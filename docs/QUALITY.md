@@ -28,6 +28,31 @@ e2e 판정 기준값(E3 강한 표현 수, E6 길이비 1.3 등)은 `dev/e2e.py`
 4. uv inline 의존(`bigcase.py`·`discover.py`·`site-api/templates/client.py.tmpl`)의 상한을 올릴 때는 그 판으로 셋째 줄을 돌린다. 전이 의존(`curl_cffi`)은 상한 대신 lock 재검토 대상이다.
 5. 아래 표에 1행을 더한다. 점검을 안 돈 판 올림은 두 exit 칸 `-`·비고 「발동 조건 아님」. `dev/verify_docs.py` 는 실제로 대조한 행(exit 0·1)의 가장 늦은 날짜가 90일을 넘으면 경고한다.
 
+## 실패 처리 점검(스킬 14개 × 3종)
+
+2026-10-18 각 SKILL.md(과 참조 문서)를 읽어 실패 3종의 처리 문장이 있는지 봤다. 「보강」은 그날 문장을 넣은 칸 — `tests/test_skill_meta.py` 「FR-23」이 문장 존재를 막는다. 스킬을 고칠 때 이 표를 함께 갱신한다.
+
+| 스킬 | 외부 장애 | 키 없음 | 입력 자료 없음 |
+|---|---|---|---|
+| intent-brief | 있음 | 있음 | 있음 |
+| case-search | 있음(`network_blocked` 보강) | 있음 | 보강 |
+| certified-letter · complaint-drafter | 있음(law-lookup.md) | 있음(law-lookup.md) | 있음 |
+| criminal-procedure-simulator | 있음 | 있음 | 있음 |
+| criminal-settlement · fact-confirmation | 해당 없음 | 해당 없음 | 있음 |
+| sentencing-predictor | 보강(양형위원회 조회 실패) | 있음 | 있음 |
+| brainstorming-lawfirm | 있음 | 보강 | 보강 |
+| review-contract | 보강(law-lookup.md) | 보강 | 있음 |
+| triage-nda | 보강(law-lookup.md) | 보강 | 보강 |
+| independent-review | 해당 없음 | 해당 없음 | 보강 |
+| litigation-calc | 해당 없음 | 해당 없음 | 있음 |
+| site-api | 보강(접속 실패·타임아웃) | 있음 | 보강 |
+
+공통: `references/law-lookup.md` 오류 목록에 `network_blocked`(Codex 샌드박스 차단 — 장애 아님)를 넣었다.
+
+## 측정 기록
+
+- 2026-10-18 빅케이스 사건번호 띄어쓰기 변형 재조회: 공개 사건번호 20개(대법원 10·하급심 10, 로컬 녹화에서 고름), HTTP 37회. 미확인 17 → 17(감소 0), 잘못 확인 0 — 효과가 없어 넣지 않는다. 법원명 약칭 변형은 번호 검색이라 해당 없음.
+
 ## 판 올림 기록
 
 | 날짜 | 판 | Health Stack | 법제처 점검 exit | 빅케이스 점검 exit | 비고 |

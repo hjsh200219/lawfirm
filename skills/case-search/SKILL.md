@@ -24,6 +24,7 @@ allowed-tools: Bash(uv run:*), Bash(python3:*), Bash(python:*), Bash(py:*)
 1. `LAW key status` — `configured: false` 면 `/lawfirm:law-key-setup` 절차(`commands/law-key-setup.md`)로 **입력 창에서** 키를 받아 저장한다. 키 값을 채팅으로 달라고 하지 않는다.
 2. `BC status` — 네트워크 없이 등록 여부만 본다. `email` 이 비었거나 `password_saved: false` 면 **빅케이스 없이 진행한다** — 법제처(와 해외 판례)만 조회하고, 결과 끝에 「빅케이스 계정을 등록하면(`/lawfirm:case-search-setup`) 하급심 전문·유사 판례도 찾을 수 있습니다」 한 줄만 덧붙인다. 사용자가 빅케이스를 직접 요청했거나 등록하겠다고 할 때만 setup 을 실행한다. `uv` 가 없어도 같은 취급이다.
 3. 해외 판례는 요청이 있을 때만 쓴다.
+4. 검색어·사건번호·법령명이 없으면 무엇을 찾을지 한 번 묻는다.
 
 ## 1. 무엇을 어디서 찾나
 
@@ -82,11 +83,13 @@ allowed-tools: Bash(uv run:*), Bash(python3:*), Bash(python:*), Bash(py:*)
 | `LAW form-get <파일 번호> --out <폴더>` | 서식 파일 내려받기(키 불필요) — 같은 이름이 있으면 `_2` 를 붙이고 덮어쓰지 않는다 |
 | `FX us-search <검색어> [--court C] [--after D] [--before D] [--cursor C]` | 미국 판례 검색(익명) — 판례명·법원·선고일·인용·opinion id·URL, 다음 페이지는 `next_cursor` |
 | `FX us-opinion <opinion_id> [--offset N]` | 미국 판결문 본문(영어) — CourtListener 토큰 필요 |
+
+미국 판례 인용 규칙: `us-opinion` 은 같은 대화의 `us-search` 결과에 나온 `opinion_id` 로만 부른다 — 기억·추측한 식별자로 부르지 않고, 판례명·인용도 검색 결과에 나온 것만 쓴다.
 | `FX de-search <검색어> [--court BGH] [--level Bundesgericht] [--page N]` | 독일 판례 본문 검색(익명) — 법원·선고일·결정 종류·발췌·URL |
 | `FX de-case <id> [--offset N]` | 독일 판결문 본문(독일어) — 사건번호·ECLI 포함 |
 | `FX key status` · `FX key set us --prompt` · `FX key clear us` | CourtListener 토큰 상태 · 입력 창으로 저장 · 삭제 |
 
-오류: `no_key`(키 등록 필요 — `/lawfirm:law-key-setup`), `key_invalid`(키가 틀렸거나 법제처에 이 PC IP 미등록), `outage`(원천 장애 — 0건과 다르다), `rate_limited`(잠시 뒤 다시), `not_found`.
+오류: `no_key`(키 등록 필요 — `/lawfirm:law-key-setup`), `key_invalid`(키가 틀렸거나 법제처에 이 PC IP 미등록), `outage`(원천 장애 — 0건과 다르다), `rate_limited`(잠시 뒤 다시), `not_found`, `network_blocked`(장애가 아니라 Codex 샌드박스 차단 — 네트워크를 허용해 같은 명령을 다시 실행).
 
 ## 주의
 

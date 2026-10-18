@@ -195,6 +195,14 @@ def next_version(out_dir, prefix):
     return v + 1
 
 
+def _cite_cell(r):
+    """원문·요지 칸 — 「확인됨」 행에만 법제처 원문 위치(공개 조회 화면)를 붙인다."""
+    text = r.get("excerpt") or r.get("detail") or ""
+    if r.get("status") == "confirmed" and r.get("source_url"):
+        text = (text + "\n" if text else "") + "원문: " + r["source_url"]
+    return text
+
+
 def table_body(st, design, cite, draft_md):
     names = design["intent_names"]
     sec_intents = ", ".join("%s(%d)" % (k, i + 2) for i, k in enumerate(design["secondaries"]))
@@ -250,7 +258,7 @@ def table_body(st, design, cite, draft_md):
                "external": "빅케이스 확인(법제처 원문 없음)",
                "format_changed": "응답 형식 변경", "pending": "대조 중단"}
         o.append(table([["초안 인용", "상태", "원문·요지(존재 확인 — 적합성 미보증)"]] +
-                       [[r["text"], lab.get(r["status"], r["status"]), r.get("excerpt") or r.get("detail") or ""] for r in cite["results"]],
+                       [[r["text"], lab.get(r["status"], r["status"]), _cite_cell(r)] for r in cite["results"]],
                        [2600, 1300, 5455]))
     tags = sorted(set(re.findall(r"\[확인 필요[^\]]*\]|\[법제처[^\]]*\]", draft_md)))
     o.append(para("7. [확인 필요] 목록", "Heading1"))
