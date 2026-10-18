@@ -5,13 +5,14 @@
 
 사용:
   intent.py resolve <state.json> [--write]   설계안 계산(--write 면 작업 폴더에 design.json 고정)
-  intent.py stats [<작업 폴더 루트>]          의도·덮어쓰기 빈도(허용 필드 7개) + 복사용 블록 — 네트워크 없음
+  intent.py stats [<작업 폴더 루트>]          의도·덮어쓰기 빈도(허용 필드 7개) + 복사용 블록·메일 링크 — 네트워크 없음
 """
 import argparse
 import collections
 import json
 import os
 import sys
+from urllib.parse import quote
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import _paths as P  # noqa: E402
@@ -307,6 +308,8 @@ def write_design(state_path, st, design):
 # 덮어쓰기 분기가 받는 칸 이름 — 통계 키 성분은 이 목록 안만(목록 밖은 other)
 OVERRIDE_CELLS = ("strength", "tone", "length", "evidence_strategy", "sections.add", "sections.remove", "addenda", "todo", "conclusion")
 STATS_FIELDS = ("cases", "intent_side", "override_cells", "avg_rounds", "fast_path_ratio", "plugin_version", "period")
+SHARE_EMAIL = "inter349@gmail.com"  # D-06 (a) 수동 공유 — 받는 곳
+SHARE_SUBJECT = "lawfirm 사용 통계"
 
 
 def _plugin_version():
@@ -347,10 +350,22 @@ def stats(root):
             "plugin_version": _plugin_version(), "period": {"from": min(days), "to": max(days)} if days else None}
 
 
+def _share_data(summary):
+    return json.dumps({k: summary.get(k) for k in STATS_FIELDS}, ensure_ascii=False, sort_keys=True, indent=1)
+
+
 def share_block(summary):
-    """복사용 블록 — 허용 필드만 다시 골라 담는다. 보내는 곳·방법은 아직 정하지 않았다(D-06)."""
-    data = {k: summary.get(k) for k in STATS_FIELDS}
-    return "```\nlawfirm 사용 통계\n%s\n```" % json.dumps(data, ensure_ascii=False, sort_keys=True, indent=1)
+    """복사용 블록 — 허용 필드만 다시 골라 담는다(받는 곳은 share_email)."""
+    return "```\nlawfirm 사용 통계\n%s\n```" % _share_data(summary)
+
+
+def share_email(summary):
+    """D-06 — 변호사가 메일 앱에서 직접 보내는 링크. 본문은 허용 필드만, 플러그인은 보내지 않는다. 사건 0건이면 없음."""
+    if not summary.get("cases"):
+        return None
+    link = "mailto:%s?subject=%s&body=%s" % (SHARE_EMAIL, quote(SHARE_SUBJECT), quote(_share_data(summary)))
+    return {"to": SHARE_EMAIL, "mailto": link,
+            "how": "보내려면 이 링크로 메일 앱을 열어 내용을 확인한 뒤 직접 보내십시오 — 플러그인은 보내지 않습니다(보낼지는 선택)."}
 
 
 def main(argv=None):
@@ -377,7 +392,7 @@ def main(argv=None):
             return P.emit(out)
         if a.cmd == "stats":
             summary = stats(a.root)
-            return P.emit({"ok": True, "summary": summary, "share_block": share_block(summary)})
+            return P.emit({"ok": True, "summary": summary, "share_block": share_block(summary), "share": share_email(summary)})
     except NeedInput as e:
         return P.emit({"ok": False, "needs": e.needs}, 3)
     except P.BriefError as e:

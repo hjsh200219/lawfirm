@@ -85,6 +85,7 @@ def test_no_network_for_stats_and_hook(root, monkeypatch, tmp_path, capsys):
     monkeypatch.setattr(socket, "create_connection", deny)
     I.stats(root)
     I.share_block(I.stats(root))
+    I.share_email(I.stats(root))
     import sys
     from conftest import ROOT
     sys.path.insert(0, os.path.join(ROOT, "skills", "litigation-calc", "scripts"))
@@ -97,3 +98,35 @@ def test_no_network_for_stats_and_hook(root, monkeypatch, tmp_path, capsys):
         pass
     capsys.readouterr()
     assert attempts == []
+
+
+def test_share_by_email_mailto_carries_only_block(root):
+    """D-06 (a) 수동 공유 — 받는 곳은 이메일. 링크 본문은 허용 필드만, 플러그인은 보내지 않는다(링크만 만든다)."""
+    from urllib.parse import parse_qs, urlsplit
+    s = I.stats(root)
+    sh = I.share_email(s)
+    assert sh["to"] == "inter349@gmail.com" and "직접" in sh["how"]
+    u = urlsplit(sh["mailto"])
+    assert u.scheme == "mailto" and u.path == "inter349@gmail.com"
+    q = parse_qs(u.query)
+    assert q["subject"] == ["lawfirm 사용 통계"]
+    assert set(json.loads(q["body"][0])) == ALLOWED
+    for name in ("홍길동", "김대출", "이가명", "김철수", "자유입력", "의뢰인 이름"):
+        assert name not in sh["mailto"] and name not in q["body"][0]
+
+
+def test_share_by_email_absent_without_cases(tmp_path):
+    assert I.share_email(I.stats(str(tmp_path / "없음"))) is None
+
+
+def test_cli_emits_email_share(root, capsys):
+    assert I.main(["stats", root]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["share"] == I.share_email(out["summary"])
+
+
+def test_readme_names_share_email():
+    from conftest import ROOT
+    readme = open(os.path.join(ROOT, "README.md"), encoding="utf-8").read()
+    line = next(x for x in readme.splitlines() if x.startswith("- 사용 통계:"))
+    assert "inter349@gmail.com" in line and "mailto" in line and "직접" in line
