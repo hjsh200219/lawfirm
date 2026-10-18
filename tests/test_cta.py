@@ -52,11 +52,26 @@ _PHONE = re.compile(r"(?<!\d)01[016789]-\d{3,4}-\d{4}(?!\d)")
 _MAIL = re.compile(r"[A-Za-z0-9._%+-]+@(?!example\.com\b)[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 
 
+SHARE_MAIL_FILES = ("skills/intent-brief/scripts/intent.py", "README.md")  # D-06 사용 통계 받는 주소 — 사용자 지정, 이 두 곳만
+
+
+def _contact_text(f):
+    t = open(os.path.join(ROOT, f), encoding="utf-8", errors="ignore").read()
+    return t.replace("inter349@gmail.com", "") if f in SHARE_MAIL_FILES else t
+
+
 def test_no_contact_values_in_skills_references_or_manifests():
     files = tracked("skills", "references", "README.md", ".claude-plugin", ".codex-plugin", "hooks", "commands")
-    bad = [f for f in files if _PHONE.search(open(os.path.join(ROOT, f), encoding="utf-8", errors="ignore").read())
-           or _MAIL.search(open(os.path.join(ROOT, f), encoding="utf-8", errors="ignore").read())]
+    bad = [f for f in files if _PHONE.search(_contact_text(f)) or _MAIL.search(_contact_text(f))]
     assert bad == []
+
+
+def test_share_mail_exception_is_only_the_d06_address():
+    """예외는 D-06 받는 주소 한 개뿐 — 다른 주소가 같은 파일에 들어오면 위 검사가 그대로 잡는다."""
+    import intent as I
+    assert I.SHARE_EMAIL == "inter349@gmail.com"
+    for f in SHARE_MAIL_FILES:
+        assert set(_MAIL.findall(open(os.path.join(ROOT, f), encoding="utf-8").read())) <= {I.SHARE_EMAIL}, f
 
 
 def test_cta_config_is_template_with_office_file():
